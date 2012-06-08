@@ -1,0 +1,7 @@
+# Editor temporaries
+.*.swp
+
+# Compilation outputs
+/doorcontrol
+/doorcontrol.o
+/luci/dist
