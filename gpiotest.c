@@ -3,7 +3,7 @@
  * (c) 2012 Matthias Lee 
  */
 
-#define DOOR_GPIO_PIN 17
+#define DOOR_GPIO_PIN 21
 
 #include <fcntl.h>
 #include <stdarg.h>
@@ -33,9 +33,10 @@ int init_GPIO(int pin, int direction){
 		}
 		
 		// TODO: check if GPIO already exists
-		char pin[2]="17";
-		if( write(fd, (char*)pin, 2) < 0){
-			printf("Error exporting pin %s\n", pin);
+		char pinb[2];
+		sprintf(pinb, "%d", pin);
+		if( write(fd, (char*)pinb, 2) < 0){
+			printf("Error exporting pin %d\n", pin);
 			exit(-1);
 		}
 		close(fd);
@@ -86,7 +87,7 @@ int set_GPIO(int pin, int val){
 				printf("Error setting pin %d to OUT\n", pin);
 				exit(-1);
 			}
-		}else if( val == 0){
+		}else if(val == 0){
 			if(write(fd, (char*)"0", 3) < 0){
 				printf("Error setting pin %d to OUT\n", pin);
 				exit(-1);
@@ -105,6 +106,6 @@ int set_GPIO(int pin, int val){
 
 int main(int argc, char **argv){
 	init_GPIO(DOOR_GPIO_PIN, 0);
-	set_GPIO(DOOR_GPIO_PIN, 0);
+	set_GPIO(DOOR_GPIO_PIN, 1);
   return 0;
 }
