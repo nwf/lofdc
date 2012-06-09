@@ -1,0 +1,9 @@
+#!/bin/bash
+
+mkdir -p /tmp/webcam
+exec fswebcam \
+  --quiet \
+  --loop 1 \
+  --title 'Main Door' \
+  --save /tmp/webcam/latest.png \
+  --save /tmp/webcam/%F-%T.png

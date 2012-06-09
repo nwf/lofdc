@@ -1,0 +1,2 @@
+# Purge webcam images more than 5 minutes old from the staging directory.
+*/5 * * * * find /tmp/webcam -cmin +5
