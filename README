@@ -1,0 +1,36 @@
+= What's this? =
+
+A flexible, web-administrable door latch control system.  It should run on
+Linux just fine and is probably pretty easily ported to other *nix or
+*nix-like systems.  (As part of our development, we used X86 laptops,
+Linksys NSLU-2, and a Raspberry Pi board.)
+
+Originally written primarily at the Baltimore Hackathon 2012 [1] for the
+Baltimore NODE [2] and the Load of Fun space on North Ave [3], we are
+releasing it under the AGPLv3 [4] in hopes that it is useful to others.
+
+[1] http://baltimorehackathon.com/
+[2] http://baltimorenode.org/
+[3] http://www.loadoffun.net/
+[4] See COPYING and/or http://www.gnu.org/licenses/agpl-3.0.html .
+
+= What do I need to build it? =
+
+The controller itself uses sqlite3, libevent2 (core only), and OpenSSL for
+PBKDFv2.  The web UI uses PHP (and needs PHP sqlite3 support).
+
+(About licensing: sqlite3 is public domain, libevent2 is 3-clause BSD, and
+OpenSSL is "Apache-like".  PHP appears to place no restriction on the
+programs written in it; Luci is Apache 2.0.)
+
+= What's here? =
+
+controller/doorcontrol.c - The door controller/observer daemon
+runit/doorcontrol/run    - and runit script
+
+runit/fswebcam/run       - webcam scraper runit script
+misc/fswebcam.crontab    - crontab to prune image buffer
+
+luci                     - an incomplete, abandoned web UI
+
+COPYING, Makefile, README - Standard stuff :)
