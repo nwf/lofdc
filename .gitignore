@@ -2,6 +2,6 @@
 .*.swp
 
 # Compilation outputs
-/doorcontrol
-/doorcontrol.o
+/controller/doorcontrol
+/controller/doorcontrol.o
 /luci/dist

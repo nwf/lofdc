@@ -11,6 +11,15 @@
 #define DOOR_FILENAME "/dev/null"
 #define REMOTE_LISTEN_PORT 12321
 
+/* Anybody else who wants to use the store here to authenticate has to use
+ * the same PBKDF parameters that we use for hashing.
+ */
+#define DB_PWHASH_ITERS  1000
+#define DB_PWHASH_OUTLEN 20
+
+#define DEBUG
+#define DEBUG_CREATE_TEST_USERS
+
 #define DOOR_PIN_LOCK   TIOCM_DTR
 #define DOOR_PIN_ONAIR  TIOCM_RTS
 //                                                                      }}}
@@ -35,6 +44,7 @@
 #include <event2/event.h>
 #include <event2/event_struct.h>
 #include <event2/util.h>
+#include <openssl/evp.h>
 
 #define ASIZE(n) (sizeof(n)/sizeof(n[0]))
 //                                                                      }}}
@@ -198,80 +208,158 @@ static void log_init() {
 
 sqlite3 *db;
 
-#define DB_TQ_PARAM_TYPE_IX 1
-#define DB_TQ_PARAM_SECRET_IX 2
-#define DB_TQ_RESULT_IX 0
-static const int DB_TQ_TYPE_RFID   = 0;
-static const int DB_TQ_TYPE_SECRET = 1;
-static const char db_tq[] =
-    "SELECT name FROM tokens WHERE type = ?1 AND secret = ?2;";
-sqlite3_stmt *db_tq_stmt;
 
-static void deinit_db() {
-  sqlite3_finalize(db_tq_stmt);
+static void db_pwhash(sqlite3_context *context, int argc, sqlite3_value **argv){
+  int res;
+
+  assert( argc==2 );
+  assert( sqlite3_value_type(argv[0]) == SQLITE_BLOB );
+  assert( sqlite3_value_type(argv[1]) == SQLITE3_TEXT );
+
+  const int saltsize = sqlite3_value_bytes(argv[0]);
+  const unsigned char *salt = sqlite3_value_blob(argv[0]);
+
+  const int pwsize = sqlite3_value_bytes(argv[1]);
+  const unsigned char *pw = sqlite3_value_blob(argv[1]);
+
+  unsigned char *out = calloc(sizeof (unsigned char), DB_PWHASH_OUTLEN);
+
+  res = PKCS5_PBKDF2_HMAC_SHA1((const char *)pw, pwsize, salt, saltsize,
+                               DB_PWHASH_ITERS, DB_PWHASH_OUTLEN, out);
+  assert(res != 0);
+
+  sqlite3_result_blob(context, out, DB_PWHASH_OUTLEN, free);
+}
+
+sqlite3_stmt *db_gate_rfid_stmt;
+sqlite3_stmt *db_gate_password_stmt;
+
+static void db_deinit() {
+  sqlite3_finalize(db_gate_password_stmt);
+  sqlite3_finalize(db_gate_rfid_stmt);
   sqlite3_close(db);
 }
 
-static int init_db() {
+static int db_init() {
   int ret;
   char *err;
   const char *tail;
-  static const char *db_init =
-    "CREATE TABLE IF NOT EXISTS tokens ("
-        "id INTEGER PRIMARY KEY ASC,"
-        "name TEXT,"
-        "email TEXT,"
-        "type INTEGER,"
-        "secret TEXT UNIQUE ON CONFLICT ABORT"
-    ");";
-
+  static const char *db_init_sql =
+    "CREATE TABLE IF NOT EXISTS users ("
+      "user_id INTEGER PRIMARY KEY ASC,"
+      "email TEXT NOT NULL UNIQUE ON CONFLICT ABORT,"
+      "pwsalt BLOB NOT NULL,"
+      "pw BLOB NOT NULL,"
+      "admin BOOLEAN NOT NULL DEFAULT 0"
+    ");"
+    "CREATE TABLE IF NOT EXISTS rfid ("
+      "rfid_id INTEGER PRIMARY KEY ASC,"
+      "user_id INTEGER NOT NULL,"
+      "tsalt BLOB NOT NULL,"
+      "token TEXT NOT NULL UNIQUE ON CONFLICT ABORT,"
+      "FOREIGN KEY (user_id) REFERENCES users(user_id)"
+    ");"
+    "CREATE TABLE IF NOT EXISTS log ("
+      "log_id INTEGER PRIMARY KEY ASC,"
+      "user_id INTEGER,"
+      "time TEXT,"
+      "message TEXT,"
+      "FOREIGN KEY (user_id) REFERENCES users(user_id)"
+    ");"
+#if defined(DEBUG) && defined(DEBUG_CREATE_TEST_USERS)
+    "INSERT OR REPLACE INTO users (user_id, email, pwsalt, pw, admin) VALUES"
+      "(0, \"admin@example.com\", x'1234', pwhash(x'1234',\"admin\"), 1),"
+      "(1, \"user@example.com\", x'2345', pwhash(x'2345',\"user\"), 0);"
+    "INSERT OR REPLACE INTO rfid (user_id, tsalt, token) VALUES"
+      "(0, x'4567', pwhash(x'4567', \"ADMTOK\")),"
+      "(1, x'5678', pwhash(x'5678', \"USRTOK\"));"
+#endif
+    ;
   ret = sqlite3_open(DATABASE_FILENAME, &db);
   if (ret) {
     fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
     goto err;
   }
 
-  ret = sqlite3_exec(db, db_init, NULL, NULL, &err);
+  ret = sqlite3_create_function_v2(db, "pwhash", 2, SQLITE_UTF8, NULL,
+                                   db_pwhash, NULL, NULL, NULL);
+  assert(ret == 0);
+
+  ret = sqlite3_exec(db, db_init_sql, NULL, NULL, &err);
   if (ret != SQLITE_OK) {
     fprintf(stderr, "Can't prepare database: %s (%s)\n", sqlite3_errmsg(db), err);
     if(err) { sqlite3_free(err); }
     goto err;
   }
 
-  ret = sqlite3_prepare_v2(db, db_tq, ASIZE(db_tq), &db_tq_stmt, &tail);
-   if (ret != SQLITE_OK) {
-    fprintf(stderr, "Can't prepare database: %s\n", sqlite3_errmsg(db));
+#define DB_GATE_PARAM_SECRET_IX 1
+#define DB_GATE_PARAM_EMAIL_IX 2
+#define DB_GATE_RESULT_IX 0
+static const char db_gate_password_sql[] =
+    "SELECT email FROM users WHERE email = ?2 AND pw = pwhash(users.pwsalt,?1);";
+  ret = sqlite3_prepare_v2(db, db_gate_password_sql, ASIZE(db_gate_password_sql),
+                               &db_gate_password_stmt, &tail);
+   if (ret != SQLITE_OK || *tail != '\0') {
+    fprintf(stderr, "Can't prepare database: %s (%s)\n", sqlite3_errmsg(db), tail);
     goto err;
   }
-  assert(*tail == '\0');
+
+static const char db_gate_rfid_sql[] =
+    "SELECT email FROM users JOIN rfid USING (user_id) WHERE token = ?1;";
+  ret = sqlite3_prepare_v2(db, db_gate_rfid_sql, ASIZE(db_gate_rfid_sql),
+                               &db_gate_rfid_stmt, &tail);
+   if (ret != SQLITE_OK || *tail != '\0') {
+    fprintf(stderr, "Can't prepare database: %s (%s)\n", sqlite3_errmsg(db), tail);
+    goto err;
+  }
+
 
   return 0;
 err:
-  deinit_db();
+  db_deinit();
   return -1;
 }
 
-static int db_tq_gated_call(int t, char *s, int (*c)(const unsigned char *)) {
+static int _db_gated_call(sqlite3_stmt *st, int (*c)(const unsigned char *)) {
   int ret, res = -1;
 
-  ret = sqlite3_bind_text(db_tq_stmt, DB_TQ_PARAM_SECRET_IX, s, -1, SQLITE_STATIC); 
-  assert(ret == SQLITE_OK);
-  ret = sqlite3_bind_int(db_tq_stmt, DB_TQ_PARAM_TYPE_IX, t); 
-  assert(ret == SQLITE_OK);
-  ret = sqlite3_step(db_tq_stmt);
+  ret = sqlite3_step(st);
   if(ret == SQLITE_ROW) {
-    res = c(sqlite3_column_text(db_tq_stmt, DB_TQ_RESULT_IX));
-    ret = sqlite3_step(db_tq_stmt);
+    res = c(sqlite3_column_text(st, DB_GATE_RESULT_IX));
+    ret = sqlite3_step(st);
     /* Guaranteed by UNIQUE constraint */
     assert(ret != SQLITE_ROW);
   }
-  ret = sqlite3_clear_bindings(db_tq_stmt);
+  ret = sqlite3_clear_bindings(st);
   assert(ret == SQLITE_OK);
-  ret = sqlite3_reset(db_tq_stmt);
+  ret = sqlite3_reset(st);
   assert(ret == SQLITE_OK);
 
   return res;
 }
+
+static int db_gate_password(char *e, char *p, int (*c)(const unsigned char *)) {
+  int ret;
+  sqlite3_stmt *st = db_gate_password_stmt;
+
+  ret = sqlite3_bind_text(st, DB_GATE_PARAM_EMAIL_IX, e, -1, SQLITE_STATIC); 
+  assert(ret == SQLITE_OK);
+  ret = sqlite3_bind_text(st, DB_GATE_PARAM_SECRET_IX, p, -1, SQLITE_STATIC); 
+  assert(ret == SQLITE_OK);
+
+  return _db_gated_call(st, c);
+}
+
+static int db_gate_rfid(char *t, int (*c)(const unsigned char *)) {
+  int ret;
+  sqlite3_stmt *st = db_gate_rfid_stmt;
+
+  ret = sqlite3_bind_text(st, DB_GATE_PARAM_SECRET_IX, t, -1, SQLITE_STATIC); 
+  assert(ret == SQLITE_OK);
+
+  return _db_gated_call(st, c);
+}
+
 
 //                                                                      }}}
 // Lock control                                                         {{{
@@ -346,7 +434,7 @@ static void door_rx_cb(evutil_socket_t fd, short what, void *arg) {
         printf("doorE recovered (discarding %s)\n", line);
       } else {
         printf("doorF %s (%zd)\n", line, strlen(line));
-        db_tq_gated_call(DB_TQ_TYPE_RFID, line, lock_open);
+        db_gate_rfid(line, lock_open);
       }
       door_flags &= ~DOOR_FLAG_RECOVERING;
       free(line);
@@ -395,6 +483,10 @@ static void remote_state_finish(struct remote_state *s) {
   free(s);
 }
 
+static int retzero(const unsigned char *_x) {
+  return 0;
+}
+
 static void remote_rx_cb(evutil_socket_t fd, short what, void *arg) {
   int ret = 0;
   char *line = NULL;
@@ -404,7 +496,7 @@ static void remote_rx_cb(evutil_socket_t fd, short what, void *arg) {
 
   ret = evbuffer_read(s->b, fd, REMOTE_STRING_MAXLEN);
   if (ret <= 0) {
-  goto drop;
+    goto drop;
   }
 
   do {
@@ -414,21 +506,50 @@ static void remote_rx_cb(evutil_socket_t fd, short what, void *arg) {
       /* Extract initial token */
       char *cmd = strtok_r(line, "\t ", &saveptr);
       if (!cmd) { continue; }
-      if (!strcasecmp(cmd, "OPEN")) {
-        char *token = strtok_r(NULL, "\t ", &saveptr);
-        int res = db_tq_gated_call(DB_TQ_TYPE_SECRET, token, lock_open);
-        if (res >= 0) {
-          writer_write_evbuffer(s->base, &s->e, fd, remote_msg_success);
-        } else {
-          writer_write_evbuffer(s->base, &s->e, fd, remote_msg_failure);
+      if (!strcasecmp(cmd, "AUTH")) {
+        char *email = strtok_r(NULL, "\t ", &saveptr);
+        char *passwd = strtok_r(NULL, "\t ", &saveptr);
+        if (email != NULL && passwd != NULL) { 
+          int res = db_gate_password(email, passwd, retzero);
+          if (res >= 0) {
+            writer_write_evbuffer(s->base, &s->e, fd, remote_msg_success);
+          } else {
+            writer_write_evbuffer(s->base, &s->e, fd, remote_msg_failure);
+          }
+          goto busy;
         }
-        goto busy;
-/*
+      } else if (!strcasecmp(cmd, "OPEN")) {
+        char *email = strtok_r(NULL, "\t ", &saveptr);
+        char *passwd = strtok_r(NULL, "\t ", &saveptr);
+        if (email != NULL && passwd != NULL) { 
+          int res = db_gate_password(email, passwd, lock_open);
+          if (res >= 0) {
+            writer_write_evbuffer(s->base, &s->e, fd, remote_msg_success);
+          } else {
+            writer_write_evbuffer(s->base, &s->e, fd, remote_msg_failure);
+          }
+          goto busy;
+        }
+#ifdef DEBUG
+      } else if (!strcasecmp(cmd, "RFID")) {
+        char *token = strtok_r(NULL, "\t ", &saveptr);
+        if (token != NULL) { 
+          int res = db_gate_rfid(token, lock_open);
+          if (res >= 0) {
+            writer_write_evbuffer(s->base, &s->e, fd, remote_msg_success);
+          } else {
+            writer_write_evbuffer(s->base, &s->e, fd, remote_msg_failure);
+          }
+          goto busy;
+        }
       } else if (!strcasecmp(cmd, "LOG")) {
-        log_dump(s->base, fd);
-*/
+        writer_write_evbuffer(s->base, &s->e, fd, log_eb);
+        goto busy;
+#endif
       } else if (!strcasecmp(cmd, "QUIT")) {
+#ifdef DEBUG
         event_base_loopbreak(s->base);
+#endif
         goto drop;
       }
       saveptr = NULL;
@@ -517,7 +638,7 @@ int main(int argc, char **argv){
   log_init();
   log_printf("Initializing...\n");
   remote_init();
-  if(init_db()) { return -1; }
+  if(db_init()) { return -1; }
   lock_init(base, fd);
   door_init(base, fd);
 
@@ -553,7 +674,7 @@ int main(int argc, char **argv){
   close(fd);
   evbuffer_free(door_eb);
   event_base_free(base);
-  deinit_db();
+  db_deinit();
   return 0;
 }
 //                                                                      }}}
