@@ -127,7 +127,8 @@ if(isset($_POST['email']) && isset($_POST['pw'])){
 						try {
 							// TODO: implement using $usr and $pw
 							$db = new PDO('sqlite:'.$dbFile);
-							$sql = "SELECT * FROM users";
+							//$sql = "SELECT * FROM users";
+							$sql = "SELECT users.user_id, users.email, log.message from users, log where users.user_id=log.user_id";
 						} catch (PDOException $e) {
 							print "Error!: " . $e->getMessage() . "<br/>";
 							die();
@@ -135,12 +136,16 @@ if(isset($_POST['email']) && isset($_POST['pw'])){
 						
 						foreach ($db->query($sql)as $row)
 						{
-							echo "User ";
-							print $row['user_id'] . ' - ' . $row['admin']  . ' - ' . $row['email'] . '<br/>';
+							if($row['user_id']==0)
+							{
+								$users_name="Joe Blow";
+							}
+							elseif($row['user_id']==1)
+							{
+								$users_name="Sue Blue";
+							}
+							print $users_name . ' - ' . $row['email'] .  '<br/>';
 						}
-						echo "John Smith - 0 - icouldbeanyone@email.com<br/>";
-						echo "Peter Johnson - 0 - jeebuslong@email.com <br/>";
-						echo "Mary JoHanson - 0 - mynameismary@email.com <br/>";
 					?>
 				</div>
 
@@ -149,7 +154,7 @@ if(isset($_POST['email']) && isset($_POST['pw'])){
 						try {
 							// TODO: implement using $usr and $pw
 							$db=new PDO('sqlite:'.$dbFile);
-							$sql = "SELECT * FROM log";
+							$sql = "SELECT message FROM log";
 						} catch (PDOException $e) {
 							print "Error!: " . $e->getMessage() . "<br/>";
 							die();
@@ -159,7 +164,6 @@ if(isset($_POST['email']) && isset($_POST['pw'])){
 						{
 							print $row['message'] . '<br/>';
 						}
-						echo "4pm <br/>";
 			
 					?>
 				</div>
@@ -169,9 +173,6 @@ if(isset($_POST['email']) && isset($_POST['pw'])){
 				</div>
 			</div>
 			
-			<div id="activitytext">
-				<h2> Recent Activity </h2>
-			</div>
 		</div><!-- end centerDiv -->
 	</body>
 </html>
