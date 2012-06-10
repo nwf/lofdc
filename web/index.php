@@ -6,27 +6,43 @@
 
 		<LINK REL=StyleSheet HREF="styles.css" TYPE="text/css" MEDIA=screen>
 		<title> The Node: Door </title> 
+		<script>
+		function reloadImg(id) {
+			//alert("enterReloadImg");
+			var obj = document.getElementById(id);
+			var src = obj.src;
+			//alert("hi "+ src + " " + obj);
+			var pos = src.indexOf('?');
+			//alert("hi");
+			if (pos >= 0) {
+			src = src.substr(0, pos);
+			}
+			var date = new Date();
+			obj.src = src + '?v=' + date.getTime();
+			//return false;
+			
+			setTimeout(reloadImg, 1000);
+		   
+		}
+		</script>
 	
 	</head>
 
 
 <!-- ********* UNIVERSAL CONTENT ********* -->
-	
-	
 	<body>
 					
 		<div id="centerDiv"> 
 		
 				
 			<div id="logo">
-				<img src="media/logo.png" border="0" alt="//media"></a>					
+				<a href="some location"><img src="media/logo.png" border="0" alt="//media"></a>					
 			</div>
 				
 				
 			<div id="webcambox">
-				<div id="webcam">
-					<img src="media/cat.png" border="0" alt="//media"></a>				
-				</div>								
+					<a href="#" onClick="return reloadImg('webcam');">
+					<img src="http://baltimorenode.redirectme.net:3456/webcam.jpg?v=123" id='webcam' border="0" alt="//media"></a>
 			</div>
 				
 				
