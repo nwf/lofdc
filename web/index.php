@@ -53,13 +53,19 @@
 
 				<div id="users">
 					<?php
-						$db=new PDO('sqlite:./media/door.db');
-						$sql = "SELECT * FROM users";
+						try {
+							$db = new PDO('sqlite:./media/door.db');
+							$sql = "SELECT * FROM users";
+						} catch (PDOException $e) {
+							print "Error!: " . $e->getMessage() . "<br/>";
+							die();
+						}
+						
 						foreach ($db->query($sql)as $row)
-					{
-						echo "User ";
-						print $row['user_id'] . ' - ' . $row['admin']  . ' - ' . $row['email'] . '<br/>';
-					}
+						{
+							echo "User ";
+							print $row['user_id'] . ' - ' . $row['admin']  . ' - ' . $row['email'] . '<br/>';
+						}
 						echo "John Smith - 0 - icouldbeanyone@email.com<br/>";
 						echo "Peter Johnson - 0 - jeebuslong@email.com <br/>";
 						echo "Mary JoHanson - 0 - mynameismary@email.com <br/>";
@@ -68,17 +74,23 @@
 
 				<div id="timestamp">
 					<?php
-						$db=new PDO('sqlite:./media/door.db');
-						$sql = "SELECT * FROM log";
+						try {
+							$db=new PDO('sqlite:./media/door.db');
+							$sql = "SELECT * FROM log";
+						} catch (PDOException $e) {
+							print "Error!: " . $e->getMessage() . "<br/>";
+							die();
+						}
+						
 						foreach ($db->query($sql)as $row)
-					{
-						print $row['message'] . '<br/>';
-					}
+						{
+							print $row['message'] . '<br/>';
+						}
 						echo "4pm <br/>";
 			
 					?>
 				</div>
-
+				
 				<div id="timestampheader">
 					<h3> Time In</h3>
 				</div>
