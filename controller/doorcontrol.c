@@ -16,6 +16,8 @@
  */
 #define DOOR_STRING_MAXLEN 12
 
+#define LOCK_DEFAULT_TIME  10
+
 
 /* Anybody else who wants to use the store here to authenticate has to use
  * the same PBKDF parameters that we use for hashing.
@@ -303,7 +305,7 @@ static int lock_open(const unsigned char *n) {
   return 0;
 }
 
-static int lock_time = 30;
+static int lock_time = LOCK_DEFAULT_TIME;
 static void lock_init(struct event_base *base, int fd) {
   int res;
   lock_fd = fd;
