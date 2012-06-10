@@ -33,6 +33,7 @@
 // Prelude                                                              {{{
 #include <assert.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -308,7 +309,8 @@ static void lock_init(struct event_base *base, int fd) {
   struct termios tios;
   memset(&tios, 0, sizeof(tios));
   tcgetattr(fd, &tios);
-  tios.c_cflag |= HUPCL | CLOCAL | DOOR_TERMIOS_CFLAGS;
+  tios.c_cflag &= ~(CBAUD|CBAUDEX);
+  tios.c_cflag |= HUPCL | CRTSCTS | DOOR_TERMIOS_CFLAGS;
   tcsetattr(fd, TCSADRAIN, &tios);
 
   /* De-assert DTR to engage the lock */
@@ -319,13 +321,30 @@ static void lock_init(struct event_base *base, int fd) {
   timerclear(&lock_timeout_tv);
   lock_timeout_tv.tv_sec = lock_time;
 }
+
+static void lock_deinit(int fd) {
+  /* Tell the OS to lower modem control signals on exit,
+   * which will re-engage the lock if we crash.
+   */
+  struct termios tios;
+  memset(&tios, 0, sizeof(tios));
+  tcgetattr(fd, &tios);
+  tios.c_cflag &= ~(CBAUD|CBAUDEX);
+  tios.c_cflag |= HUPCL | B0;
+  tcsetattr(fd, TCSADRAIN, &tios);
+}
+
 //                                                                      }}}
 // RFID Control                                                         {{{
 
 static int door_fd;
 static struct event     door_ev;
+static struct event     door_ev2;
 static struct evbuffer *door_eb;
 
+static void door_tx_cb(evutil_socket_t fd, short what, void *arg) {
+  log_printf("DOOR TX?\n");
+}
 
 static int door_flags;
 #define DOOR_FLAG_RECOVERING 1
@@ -371,7 +390,9 @@ static void door_init(struct event_base *base, int fd) {
   evbuffer_expand(door_eb, 3*DOOR_STRING_MAXLEN);
 
   event_assign(&door_ev, base, door_fd, EV_READ|EV_PERSIST, door_rx_cb, NULL);
+  event_assign(&door_ev2, base, door_fd, EV_WRITE, door_tx_cb, NULL);
   event_add(&door_ev, NULL);
+  event_add(&door_ev2, NULL);
 }
 
 //                                                                      }}}
@@ -506,6 +527,29 @@ static void setnonblock(int fd)
 //                                                                      }}}
 // Main                                                                 {{{
 
+struct event_base *base;
+
+static void signals_catch(int s, siginfo_t *si, void *uc) {
+  static char msg[] = "Caught signal; requesting event loop exit\n";
+
+  write(2,msg,ASIZE(msg));
+  event_base_loopbreak(base);
+}
+
+static void signals_init(void) {
+  int res;
+  struct sigaction sa;
+  
+  sa.sa_flags = SA_SIGINFO;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_sigaction = signals_catch;
+  res = sigaction(SIGSEGV, &sa, NULL);
+  res = sigaction(SIGINT, &sa, NULL);
+  res = sigaction(SIGQUIT, &sa, NULL);
+  res = sigaction(SIGTERM, &sa, NULL);
+  assert(res != -1);
+}
+
 int main(int argc, char **argv){
   char *door_fn = NULL;
   char *db_fn = NULL;
@@ -530,7 +574,8 @@ int main(int argc, char **argv){
     return -1;
   }
 
-  struct event_base *base = event_base_new();
+  base = event_base_new();
+  signals_init();
 
   // Open the serial port for the door and lock
   int fd = open(door_fn, O_RDONLY|O_NONBLOCK);
@@ -574,7 +619,9 @@ int main(int argc, char **argv){
   // forced out of the event loop.  Time to die so that our supervisor can
   // respawn us.  On the way out, try to clean up a little to ease debugging
   // in things like valgrind.
- 
+
+  lock_deinit(fd); 
+
   close(fd);
   evbuffer_free(door_eb);
   event_base_free(base);
