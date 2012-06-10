@@ -7,22 +7,19 @@
 		<LINK REL=StyleSheet HREF="styles.css" TYPE="text/css" MEDIA=screen>
 		<title> The Node: Door </title> 
 		<script>
-		function reloadImg(id) {
-			//alert("enterReloadImg");
+		// Thanks: http://stackoverflow.com/questions/1077041/refresh-image-with-a-new-one-at-the-same-url
+		function reloadImg() { 
+			id="webcam";
 			var obj = document.getElementById(id);
 			var src = obj.src;
-			//alert("hi "+ src + " " + obj);
 			var pos = src.indexOf('?');
-			//alert("hi");
 			if (pos >= 0) {
 			src = src.substr(0, pos);
 			}
 			var date = new Date();
 			obj.src = src + '?v=' + date.getTime();
-			//return false;
 			
 			setTimeout(reloadImg, 1000);
-		   
 		}
 		</script>
 	
@@ -30,7 +27,7 @@
 
 
 <!-- ********* UNIVERSAL CONTENT ********* -->
-	<body>
+	<body onLoad="reloadImg('webcam');">
 					
 		<div id="centerDiv"> 
 		
@@ -41,8 +38,7 @@
 				
 				
 			<div id="webcambox">
-					<a href="#" onClick="return reloadImg('webcam');">
-					<img src="http://baltimorenode.redirectme.net:3456/webcam.jpg?v=123" id='webcam' border="0" alt="//media"></a>
+					<img src="http://baltimorenode.redirectme.net:3456/webcam.jpg?v=123" id='webcam' border="0" alt="//media">
 			</div>
 				
 				
