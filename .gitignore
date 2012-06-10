@@ -5,3 +5,4 @@
 /controller/doorcontrol
 /controller/doorcontrol.o
 /luci/dist
+/misc/gpiotest
