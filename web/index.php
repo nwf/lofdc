@@ -46,7 +46,7 @@ require_once("globalVars.php");
 			$(".modal").click(function() {
 					
 					var source = 'auth.php';	//Refer to any page on your server, external pages are not valid
-					var width = 500; 					//Use an integer (in pixels)
+					var width = 350; 					//Use an integer (in pixels)
 			    
 					modalPopup(align, top, width, padding, disableColor, disableOpacity, backgroundColor, borderColor, borderWeight, borderRadius, fadeOutTime, source, loadingImage);
 					
