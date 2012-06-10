@@ -1,4 +1,6 @@
 #!/bin/sh
 
+exec 2>&1
+
 stty -F /dev/ttyUSB0 0
 doorcontrol -D /etc/doorcontrol.db -F /dev/ttyUSB0 -p 12321

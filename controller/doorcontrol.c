@@ -18,6 +18,9 @@
 
 #define LOCK_DEFAULT_TIME  10
 
+#undef  LOG_TO_SYSLOG
+#define LOG_TO_STDERR
+
 
 /* Anybody else who wants to use the store here to authenticate has to use
  * the same PBKDF parameters that we use for hashing.
@@ -101,12 +104,16 @@ static void log_printf(const char *fmt, ...) {
   va_start(ap, fmt);
   evbuffer_add_vprintf(log_eb, fmt, ap);
   va_end(ap);
+#ifdef LOG_TO_STDERR
   va_start(ap, fmt);
   vfprintf(stderr, fmt, ap);
   va_end(ap);
+#endif
+#ifdef LOG_TO_SYSLOG
   va_start(ap, fmt);
   vsyslog(LOG_INFO, fmt, ap);
   va_end(ap);
+#endif
 }
 
 
