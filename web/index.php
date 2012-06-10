@@ -23,6 +23,45 @@ require_once("globalVars.php");
 			setTimeout(reloadImg, 1000);
 		}
 		</script>
+		<script language="javascript" src="js/jquery.js"></script>
+		<script language="javascript" src="js/modal.popup.js"></script>
+		<script language="javascript">
+			//http://www.jquerypopup.com/demo.php
+		     $(document).ready(function() {
+			    
+				//Change these values to style your modal popup
+				var align = 'center';										//Valid values; left, right, center
+				var top = 100; 												//Use an integer (in pixels)
+				var padding = 10;											//Use an integer (in pixels)
+				var backgroundColor = '#FFFFFF'; 							//Use any hex code
+				var borderColor = '#000000'; 								//Use any hex code
+				var borderWeight = 4; 										//Use an integer (in pixels)
+				var borderRadius = 5; 										//Use an integer (in pixels)
+				var fadeOutTime = 300; 										//Use any integer, 0 = no fade
+				var disableColor = '#666666'; 								//Use any hex code
+				var disableOpacity = 40; 									//Valid range 0-100
+				var loadingImage = 'lib/release-0.0.1/loading.gif';	//Use relative path from this page
+					
+				//This method initialises the modal popup
+			$(".modal").click(function() {
+					
+					var source = 'auth.php';	//Refer to any page on your server, external pages are not valid
+					var width = 500; 					//Use an integer (in pixels)
+			    
+					modalPopup(align, top, width, padding, disableColor, disableOpacity, backgroundColor, borderColor, borderWeight, borderRadius, fadeOutTime, source, loadingImage);
+					
+			});
+				
+				//This method hides the popup when the escape key is pressed
+				$(document).keyup(function(e) {
+					if (e.keyCode == 27) {
+						closePopup(fadeOutTime);
+					}
+				});
+				
+		    });
+			
+		</script>
 	</head>
 
 <!-- ********* UNIVERSAL CONTENT ********* -->
@@ -43,7 +82,7 @@ require_once("globalVars.php");
 			</div>
 
 			<div id="unlockbox">
-				<a href="#" onClick="alert('unlock?');">
+				<a class="modal" href="javascript:void(0);">
 					<div id="unlocktext"><h1> Unlock </h1></div>
 				</a>
 			</div>				
