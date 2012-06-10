@@ -1,3 +1,7 @@
+<?php
+require_once("globalVars.php");
+
+?>
 <html>
 <!-- ********* STYLESHEET LINK ********* -->
 	<head>
@@ -54,7 +58,8 @@
 				<div id="users">
 					<?php
 						try {
-							$db = new PDO('sqlite:./media/door.db');
+							// TODO: implement using $usr and $pw
+							$db = new PDO('sqlite:'.$dbFile);
 							$sql = "SELECT * FROM users";
 						} catch (PDOException $e) {
 							print "Error!: " . $e->getMessage() . "<br/>";
@@ -75,7 +80,8 @@
 				<div id="timestamp">
 					<?php
 						try {
-							$db=new PDO('sqlite:./media/door.db');
+							// TODO: implement using $usr and $pw
+							$db=new PDO('sqlite:'.$dbFile);
 							$sql = "SELECT * FROM log";
 						} catch (PDOException $e) {
 							print "Error!: " . $e->getMessage() . "<br/>";
