@@ -1,9 +1,6 @@
 <html>
-
 <!-- ********* STYLESHEET LINK ********* -->
-	
 	<head>
-
 		<LINK REL=StyleSheet HREF="styles.css" TYPE="text/css" MEDIA=screen>
 		<title> The Node: Door </title> 
 		<script>
@@ -22,51 +19,38 @@
 			setTimeout(reloadImg, 1000);
 		}
 		</script>
-	
 	</head>
-
 
 <!-- ********* UNIVERSAL CONTENT ********* -->
 	<body onLoad="reloadImg('webcam');">
-					
-		<div id="centerDiv"> 
-		
-				
+		<div id="centerDiv"> 	
 			<div id="logo">
 				<a href="some location"><img src="media/logo.png" border="0" alt="//media"></a>					
 			</div>
-				
-				
+
 			<div id="webcambox">
-					<img src="http://baltimorenode.redirectme.net:3456/webcam.jpg?v=123" id='webcam' border="0" alt="//media">
+				<img src="http://baltimorenode.redirectme.net:3456/webcam.jpg?v=123" id='webcam' border="0" alt="//media">
 			</div>
-				
-				
+
 			<div id="loginbox">
-				<div id="logintext">
-					<h1> Login </h1>	
-				</div>	
+				<a href="login.php">
+					<div id="logintext"><h1> Login </h1></div>	
+				</a>
 			</div>
-				
-				
+
 			<div id="unlockbox">
-				<div id="unlocktext">
-					<h1> Unlock </h1>	
-				</div>	
+				<a href="#" onClick="alert('unlock?');">
+					<div id="unlocktext"><h1> Unlock </h1></div>
+				</a>
 			</div>				
 				
 	
 <!-- ********* ACTIVITY CONTENT ********* -->
-
-				
 			<div id="activity">
-			
-			
 				<div id="usersheader">
 					<h3> Recent Users - Admin - E-Mail</h3>
 				</div>
-				
-				
+
 				<div id="users">
 					<?php
 						$db=new PDO('sqlite:./media/door.db');
@@ -81,8 +65,7 @@
 						echo "Mary JoHanson - 0 - mynameismary@email.com <br/>";
 					?>
 				</div>
-			
-			
+
 				<div id="timestamp">
 					<?php
 						$db=new PDO('sqlite:./media/door.db');
@@ -95,24 +78,15 @@
 			
 					?>
 				</div>
-				
-				
+
 				<div id="timestampheader">
 					<h3> Time In</h3>
 				</div>
-				
-				
-		</div>
-				
-				
+			</div>
+			
 			<div id="activitytext">
 				<h2> Recent Activity </h2>
 			</div>
-
-
-
-	</div>
+		</div><!-- end centerDiv -->
 	</body>
 </html>
-
-
