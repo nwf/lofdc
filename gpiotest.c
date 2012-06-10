@@ -107,5 +107,7 @@ int set_GPIO(int pin, int val){
 int main(int argc, char **argv){
 	init_GPIO(DOOR_GPIO_PIN, 0);
 	set_GPIO(DOOR_GPIO_PIN, 1);
+	sleep(5);
+	set_GPIO(DOOR_GPIO_PIN, 0);
   return 0;
 }
