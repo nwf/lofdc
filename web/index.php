@@ -33,7 +33,7 @@ require_once("globalVars.php");
 			</div>
 
 			<div id="webcambox">
-				<img src="http://baltimorenode.redirectme.net:3456/webcam.jpg?v=123" id='webcam' border="0" alt="//media">
+				<img src="<?php print $webcamLoc;?>?v=123" id='webcam' border="0" alt="//media">
 			</div>
 
 			<div id="loginbox">
