@@ -1,5 +1,29 @@
 <?php
 require_once("globalVars.php");
+if(isset($_POST['email']) && isset($_POST['pw'])){
+	
+	print $_POST["email"];
+	print "<br>";
+	print $_POST["pw"];
+	print "starting socket<br>";
+	$fp = fsockopen("lofdoorcontrol.local", 12321, $errno, $errstr, 30);
+	print "opened socket<br>";
+	$b=0;
+	if (!$fp) {
+	    echo "$errstr ($errno)<br />\n";
+	} else {
+	    $out = "auth admin@example.com admin\r\n";
+	    //$out = "ping\n";
+	    fwrite($fp, $out);
+	    print "sent<br>";
+	    print fgets($fp, 15);
+	    /*while (!feof($fp)) {
+		print fgets($fp, 4);
+	    }*/
+	    fclose($fp);
+	}
+}
+
 
 ?>
 <html>

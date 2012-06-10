@@ -2,7 +2,7 @@
 <script language="javascript" type="text/javascript" src="niceforms.js"></script>
 <link rel="stylesheet" type="text/css" media="all" href="niceforms-default.css" />
 <body>
-<form action="auth.php" method="post" class="niceform">
+<form action="index.php" method="post" class="niceform">
     <fieldset>
     	<legend>Login to unlock Door</legend>
         <dl>
@@ -11,7 +11,7 @@
         </dl>
         <dl>
         	<dt><label for="password">Password:</label></dt>
-            <dd><input type="password" name="password" id="password" size="32" maxlength="32" /></dd>
+            <dd><input type="password" name="pw" id="password" size="32" maxlength="32" /></dd>
         </dl>
         <dl>
     </fieldset>
