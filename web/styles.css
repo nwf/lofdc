@@ -1,0 +1,472 @@
+		
+			a:link {color:rgb(200,0,0);}      		/* 		unvisited link 		*/
+			a:visited {color:rgb(180,50,0);}  		/* 		visited link 		*/
+			a:hover {color:rgb(240,0,0);}    		/* 		mouse over link 	*/
+			a:active {color:blue}
+			
+			a:link {text-decoration:none;}
+			a:visited {text-decoration:underline;}
+			
+			
+/***** FONT CONTENT *****/	
+
+		
+		h1 {
+					
+			font-weight:100;
+			font-family:"Courier New", Courier, monospace;
+			color:black;
+			text-align:center;
+			
+			}
+			
+		h2 {
+		
+			font-size:12px;
+			font-weight:100;
+			font-family:"Courier New", Courier, monospace;
+			color:black;
+			
+			}
+			
+		h3 {
+		
+			font-style:italic;
+			font-size:14px;
+			font-weight:100;
+			font-family:"Courier New", Courier, monospace;
+			color:black;
+			
+			}
+			
+		p {
+		
+			font-style:italic;
+			font-family:"Courier New", Courier, monospace;
+			color:rgb(100,100,100);
+			
+			}		
+		
+		blockquote {
+		
+			text-indent:50px;
+			font-family:"Courier New", Courier, monospace;
+			color:rgb(100,100,100);
+			
+			}
+		    	    				
+		body {
+		
+			font-family: "Courier New","Courier","Helvetica" 
+			
+			text-align: center;
+			min-width: 840px;
+			
+		}
+
+
+/***** UNIVERSAL DIV CONTENT *****/	
+
+		
+		#centerDiv {
+		
+			position:relative;
+			top:30px;
+			left:auto;
+			margin:auto;
+			width:674px;
+			height:500;
+			text-align: center;
+			
+			
+			border:2px solid #ffffff;
+
+		}
+		
+		div{
+		
+			border:2px solid #ffffff;
+			
+			font-size:12px;
+			font-weight:100;
+			font-family:"Courier New", Courier, monospace;
+			color:rgb(100,100,100);
+			
+			
+		
+		}
+		
+		#logo {
+			
+			position:absolute;
+			top:24px;
+			left:20px;
+			
+			border:0px solid #ffffff;
+
+			
+			width:auto;
+			height:auto;
+			
+			font-size:12px;
+			text-indent:0px;
+			font-weight:100;
+			font-family:"Courier New", Courier, monospace;
+			color:rgb(100,100,100);
+			text-align: left;
+
+			
+		}
+		
+		#webcam {
+			
+			position:absolute;
+			top:0px;
+			left:0px;
+			
+			border:3px solid #ffffff;
+
+			width:320px;
+			height:240px
+			
+			font-size:12px;
+			text-indent:0px;
+			font-weight:100;
+			font-family:"Courier New", Courier, monospace;
+			color:rgb(100,100,100);
+			text-align: center;
+			
+
+			
+		}
+		
+		#webcambox {
+			
+			position:absolute;
+			top:34px;
+			left:300px;
+						
+			border:5px solid #0792D0;
+
+			width:326px;
+			height:246px;
+			
+			font-size:12px;
+			text-indent:0px;
+			font-weight:100;
+			font-family:"Courier New", Courier, monospace;
+			color:rgb(100,100,100);
+			text-align: center;
+			
+
+			
+		}
+		
+		#loginbox {
+			
+			position:absolute;
+			top:300px;
+			left:300px;
+			
+			border:5px solid #0792D0;
+
+			width:153px;
+			height:40px;
+			
+			font-size:12px;
+			font-weight:100;
+			font-family:"Courier New", Courier, monospace;
+			color:rgb(100,100,100);
+			text-align: center;
+			vertical-align:middle;			
+
+
+			
+		}
+		
+		#logintext {
+			
+			position:absolute;
+			top:-8px;
+			left:0px;
+			
+			border:0px solid #0792D0;
+
+			width:152px;
+			height:40px;
+			
+			font-size:12px;
+			font-weight:100;
+			font-family:"Courier New", Courier, monospace;
+			color:rgb(100,100,100);
+			text-align: center;
+			vertical-align:middle;			
+
+
+			
+		}
+		
+		#unlockbox {
+			
+			position:absolute;
+			top:300px;
+			left:473px;
+			
+			border:5px solid #0792D0;
+
+			
+			width:153px;
+			height:40px;
+			
+			font-size:12px;
+			font-weight:100;
+			font-family:"Courier New", Courier, monospace;
+			color:rgb(100,100,100);
+			text-align: center;
+			vertical-align:middle;
+			
+		}
+		
+		#unlocktext {
+			
+			position:absolute;
+			top:-8px;
+			left:0px;
+			
+			border:0px solid #0792D0;
+
+			
+			width:153px;
+			height:40px;
+			
+			font-size:12px;
+			font-weight:100;
+			font-family:"Courier New", Courier, monospace;
+			color:rgb(100,100,100);
+			text-align: center;
+			vertical-align:middle;
+			
+		}
+		
+		
+/***** INDEX DIV CONTENT *****/	
+		
+		
+		#activitytext {
+			
+			position:absolute;
+			top:410px;
+			left:86px;
+			
+			border:0px solid #7792D0;
+
+			width:100px;
+			height:38px;
+			
+			font-size:8px;
+			text-indent:0px;
+			font-weight:100;
+			font-family:"Courier New", Courier, monospace;
+			color:rgb(100,100,100);
+			text-align: right;
+
+			
+		}
+		
+		#activity {
+			
+			position:absolute;
+			top:361px;
+			left:196px;
+			
+			border:5px solid #0792D0;
+			
+			width:430px;
+			height:95px;
+			
+			font-size:12px;
+			text-indent:0px;
+			font-weight:100;
+			font-family:"Courier New", Courier, monospace;
+			color:rgb(100,100,100);
+			text-align: left;
+
+			
+		}
+		
+		#usersheader {
+			
+			position:absolute;
+			top:-11px;
+			left:6px;
+			
+			border:0px solid #000fff;
+			
+			width:340px;
+			height:20px;
+			
+			font-size:12px;
+			font-weight:100;
+			font-family:"Courier New", Courier, monospace;
+			color:rgb(100,100,100);
+			text-align: left;
+
+			
+		}
+		
+		#users {
+			
+			position:absolute;
+			top:22px;
+			left:6px;
+			
+			border:0px solid #000fff;
+			
+			width:340px;
+			height:70px;
+			
+			font-size:12px;
+			text-indent:0px;
+			font-weight:100;
+			font-family:"Courier New", Courier, monospace;
+			color:rgb(100,100,100);
+			text-align: left;
+
+			
+		}
+		
+		#timestampheader {
+			
+			position:absolute;
+			top:-11px;
+			left:362px;
+			
+			border:0px solid #000fff;
+			
+			width:60px;
+			height:20px;
+			
+			font-size:12px;
+			text-indent:0px;
+			font-weight:100;
+			font-family:"Courier New", Courier, monospace;
+			color:rgb(100,100,100);
+			text-align: left;
+
+			
+		}
+		
+		#timestamp {
+			
+			position:absolute;
+			top:22px;
+			left:362px;
+			
+			border:0px solid #000fff;
+			
+			width:60px;
+			height:70px;
+			
+			font-size:12px;
+			text-indent:0px;
+			font-weight:100;
+			font-family:"Courier New", Courier, monospace;
+			color:rgb(100,100,100);
+			text-align: left;
+
+			
+		}
+		
+				
+		
+/***** LOGIN DIV CONTENT *****/	
+
+		
+		#editbutton {
+			
+			position:absolute;
+			top:380px;
+			left:444px;
+			
+			border:1px solid #0792D0;
+
+			width:190px;
+			height:18px;
+			
+			text-indent:0px;
+			font-weight:100;
+			font-family:"Courier New", Courier, monospace;
+			color:rgb(100,100,100);
+			text-align: right;
+			vertical-align: middle;
+
+			
+		}
+		
+		#editbuttontext {
+			
+			position:absolute;
+			top:-6px;
+			left:5px;
+			
+			border:0px solid #0792D0;
+
+			width:auto;
+			height:auto;
+			
+			text-indent:5px;
+			font-weight:100;
+			font-family:"Courier New", Courier, monospace;
+			color:rgb(100,100,100);
+			text-align: left;
+			vertical-align: middle;
+
+			
+		}
+		
+		
+		
+		#info {
+			
+			position:absolute;
+			top:406px;
+			left:196px;
+			
+			border:5px solid #0792D0;
+			
+			width:430px;
+			height:45px;
+			
+			font-size:12px;
+			text-indent:0px;
+			font-weight:100;
+			font-family:"Courier New", Courier, monospace;
+			color:rgb(100,100,100);
+			text-align: right;
+
+			
+		}
+		
+		#infotext {
+			
+			position:absolute;
+			top:410px;
+			left:86px;
+			
+			border:0px solid #7792D0;
+
+			width:100px;
+			height:38px;
+			
+			font-size:8px;
+			text-indent:0px;
+			font-weight:100;
+			font-family:"Courier New", Courier, monospace;
+			color:rgb(100,100,100);
+			text-align: right;
+
+			
+		}
+		
+				
+		
