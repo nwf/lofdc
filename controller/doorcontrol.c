@@ -5,11 +5,17 @@
  * Released under AGPLv3; see COPYING for details.
  */
 
-// Configuration Knobs                                                  {{{
-#define DATABASE_FILENAME "door.db"
-#define LOCK_OPEN_DURATION 30
-#define DOOR_FILENAME "/dev/null"
-#define REMOTE_LISTEN_PORT 12321
+// Configuration Knobs (i.e. symbols for mysterious constants)          {{{
+#define REMOTE_WRITER_TIMEOUT 30
+#define REMOTE_STRING_MAXLEN 128
+
+/*
+ * A knob to limit the size of our buffer for reading from the RFID device.
+ * Should be set to be large enough to contain any valid response, including
+ * newline termination.
+ */
+#define DOOR_STRING_MAXLEN 12
+
 
 /* Anybody else who wants to use the store here to authenticate has to use
  * the same PBKDF parameters that we use for hashing.
@@ -20,6 +26,7 @@
 #define DEBUG
 #define DEBUG_CREATE_TEST_USERS
 
+#define DOOR_TERMIOS_CFLAGS B2400
 #define DOOR_PIN_LOCK   TIOCM_DTR
 #define DOOR_PIN_ONAIR  TIOCM_RTS
 //                                                                      }}}
@@ -47,100 +54,6 @@
 #include <openssl/evp.h>
 
 #define ASIZE(n) (sizeof(n)/sizeof(n[0]))
-//                                                                      }}}
-// Writer                                                               {{{
-
-#define WRITER_TIMEOUT 5
-struct writer_state {
-  int fd;
-  struct evbuffer *b;
-  struct event e;
-  struct event et;
-  struct event *ef;
-};
-
-static void writer_finish(struct writer_state *s) {
-  if (s->ef) {
-    /* If we have a continuation event, add it */
-    event_add(s->ef, NULL);
-  } else {
-    /* Otherwise, close up shop */
-    close(s->fd);
-  }
-  event_del(&s->e);
-  event_del(&s->et);
-  evbuffer_free(s->b);
-  free(s);
-}
-
-static void writer_timeout(evutil_socket_t fd, short what, void *arg) {
-  struct writer_state *s = (struct writer_state *)arg;
-  writer_finish(s);  
-}
-
-static void writer_tx_cb(evutil_socket_t fd, short what, void *arg) {
-  struct writer_state *s = (struct writer_state *)arg;
-
-  assert(s->fd == fd);
-
-  int len = evbuffer_write(s->b, fd);
-  if (len <= 0) {
-    /* Hang up if we fail to write anything */
-    close(fd);
-    writer_finish(s);
-  } else if(evbuffer_get_length(s->b) == 0) {
-    /* We're done; free up our event state and go on our merry way */
-    writer_finish(s);
-  } else {
-    /* Reset the timeout */
-    struct timeval tv;  
-      timerclear(&tv);
-      tv.tv_sec = WRITER_TIMEOUT;
-    event_add(&s->et, &tv);
-  }
-}
-
-static void writer_write_evbuffer(struct event_base *base,
-                                  struct event *ev,
-                                  int fd, struct evbuffer *b) {
-  struct writer_state *s = calloc(sizeof(struct writer_state), 1);
-  if (!s) {
-    goto err;
-  }
-  s->fd = fd;
-  s->ef = ev;
-
-  s->b = evbuffer_new();
-  if (!s->b) {
-    goto err_dumpbuf;
-  }
-
-  /* Copy the buffer */
-  {
-    int len = evbuffer_get_length(b);
-    evbuffer_add(s->b, evbuffer_pullup(b, len), len);
-  }
-
-  /* Construct an event for us, which will gobble itself up */
-  event_assign(&s->e, base, fd, EV_WRITE, writer_tx_cb, s);
-  event_add(&s->e, NULL);
-
-  /* Also add a timeout to prevent somebody from holding us up too long */
-  struct timeval tv;  
-    timerclear(&tv);
-  tv.tv_sec = WRITER_TIMEOUT;
-  evtimer_assign(&s->et, base, writer_timeout, s);
-  event_add(&s->et, &tv);
-
-  return;
-
-err_dumpbuf:
-  free(s);
-err:
-  return;  
-}
-
-
 //                                                                      }}}
 // Logging                                                              {{{
 
@@ -208,7 +121,6 @@ static void log_init() {
 
 sqlite3 *db;
 
-
 static void db_pwhash(sqlite3_context *context, int argc, sqlite3_value **argv){
   int res;
 
@@ -240,7 +152,7 @@ static void db_deinit() {
   sqlite3_close(db);
 }
 
-static int db_init() {
+static int db_init(char *fn) {
   int ret;
   char *err;
   const char *tail;
@@ -250,7 +162,8 @@ static int db_init() {
       "email TEXT NOT NULL UNIQUE ON CONFLICT ABORT,"
       "pwsalt BLOB NOT NULL,"
       "pw BLOB NOT NULL,"
-      "admin BOOLEAN NOT NULL DEFAULT 0"
+      "admin BOOLEAN NOT NULL DEFAULT 0,"
+      "enabled BOOLEAN NOT NULL DEFAULT 1"
     ");"
     "CREATE TABLE IF NOT EXISTS rfid ("
       "rfid_id INTEGER PRIMARY KEY ASC,"
@@ -271,11 +184,11 @@ static int db_init() {
       "(0, \"admin@example.com\", x'1234', pwhash(x'1234',\"admin\"), 1),"
       "(1, \"user@example.com\", x'2345', pwhash(x'2345',\"user\"), 0);"
     "INSERT OR REPLACE INTO rfid (user_id, tsalt, token) VALUES"
-      "(0, x'4567', pwhash(x'4567', \"ADMTOK\")),"
-      "(1, x'5678', pwhash(x'5678', \"USRTOK\"));"
+      "(0, x'4567', pwhash(x'4567', \"34008159C3\")),"
+      "(1, x'5678', pwhash(x'5678', \"3400B6FE53\"));"
 #endif
     ;
-  ret = sqlite3_open(DATABASE_FILENAME, &db);
+  ret = sqlite3_open(fn, &db);
   if (ret) {
     fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
     goto err;
@@ -305,7 +218,7 @@ static const char db_gate_password_sql[] =
   }
 
 static const char db_gate_rfid_sql[] =
-    "SELECT email FROM users JOIN rfid USING (user_id) WHERE token = ?1;";
+    "SELECT email FROM users JOIN rfid USING (user_id) WHERE token = pwhash(rfid.tsalt, ?1);";
   ret = sqlite3_prepare_v2(db, db_gate_rfid_sql, ASIZE(db_gate_rfid_sql),
                                &db_gate_rfid_stmt, &tail);
    if (ret != SQLITE_OK || *tail != '\0') {
@@ -375,12 +288,17 @@ static void lock_timeout_cb(evutil_socket_t fd, short what, void *arg) {
 static int lock_open(const unsigned char *n) {
   int flags = DOOR_PIN_LOCK;
   int res = ioctl(lock_fd, TIOCMBIS, &flags);
-  log_printf("Lock open: '%s' (%d)\n", n, res);
+  if (event_pending(&lock_timeout_ev, EV_TIMEOUT, NULL)) {
+    log_printf("Lock re-opened: '%s' (%d)\n", n, res);
+  } else {
+    log_printf("Lock open: '%s' (%d)\n", n, res);
+  }
   event_add(&lock_timeout_ev, &lock_timeout_tv);
 
   return 0;
 }
 
+static int lock_time = 30;
 static void lock_init(struct event_base *base, int fd) {
   lock_fd = fd;
 
@@ -390,7 +308,7 @@ static void lock_init(struct event_base *base, int fd) {
   struct termios tios;
   memset(&tios, 0, sizeof(tios));
   tcgetattr(fd, &tios);
-  tios.c_cflag |= HUPCL;
+  tios.c_cflag |= HUPCL | CLOCAL | DOOR_TERMIOS_CFLAGS;
   tcsetattr(fd, TCSADRAIN, &tios);
 
   /* De-assert DTR to engage the lock */
@@ -399,7 +317,7 @@ static void lock_init(struct event_base *base, int fd) {
 
   evtimer_assign(&lock_timeout_ev, base, lock_timeout_cb, NULL);
   timerclear(&lock_timeout_tv);
-  lock_timeout_tv.tv_sec = LOCK_OPEN_DURATION;
+  lock_timeout_tv.tv_sec = lock_time;
 }
 //                                                                      }}}
 // RFID Control                                                         {{{
@@ -408,12 +326,6 @@ static int door_fd;
 static struct event     door_ev;
 static struct evbuffer *door_eb;
 
-/*
- * A knob to limit the size of our buffer for reading from the RFID device.
- * Should be set to be large enough to contain any valid response, including
- * newline termination.
- */
-#define DOOR_STRING_MAXLEN 100
 
 static int door_flags;
 #define DOOR_FLAG_RECOVERING 1
@@ -426,14 +338,14 @@ static void door_rx_cb(evutil_socket_t fd, short what, void *arg) {
   assert(ret > 0);
 
   do {
-    line = evbuffer_readln(door_eb, NULL, EVBUFFER_EOL_CRLF);
-    printf("doorR %d %s\n", door_flags, line);
+    line = evbuffer_readln(door_eb, NULL, EVBUFFER_EOL_ANY);
+    // printf("doorR %d %s\n", door_flags, line);
  
     if(line) { 
       if(door_flags & DOOR_FLAG_RECOVERING) {
-        printf("doorE recovered (discarding %s)\n", line);
+        // printf("doorE recovered (discarding %s)\n", line);
       } else {
-        printf("doorF %s (%zd)\n", line, strlen(line));
+        // printf("doorF %s (%zd)\n", line, strlen(line));
         db_gate_rfid(line, lock_open);
       }
       door_flags &= ~DOOR_FLAG_RECOVERING;
@@ -443,7 +355,7 @@ static void door_rx_cb(evutil_socket_t fd, short what, void *arg) {
 
   int len = evbuffer_get_length(door_eb);
   if(len >= DOOR_STRING_MAXLEN) {
-    printf("Drop %d\n", len);
+    // printf("Drop %d\n", len);
     door_flags |= DOOR_FLAG_RECOVERING;
     evbuffer_drain(door_eb, len);
   }
@@ -465,151 +377,118 @@ static void door_init(struct event_base *base, int fd) {
 //                                                                      }}}
 // Remote Control                                                       {{{
 
-#define REMOTE_STRING_MAXLEN 128
-
-static struct evbuffer *remote_msg_success;
-static struct evbuffer *remote_msg_failure;
-
-struct remote_state {
-  int fd;
-  struct evbuffer *b;
-  struct event e;
-  struct event_base *base;
-};
-
-static void remote_state_finish(struct remote_state *s) {
-  evbuffer_free(s->b);
-  event_del(&s->e);
-  free(s);
-}
 
 static int retzero(const unsigned char *_x) {
   return 0;
 }
 
-static void remote_rx_cb(evutil_socket_t fd, short what, void *arg) {
-  int ret = 0;
+static void remote_rx_cb(struct bufferevent *bev, void *arg) {
   char *line = NULL;
 
-  struct remote_state *s = (struct remote_state *)arg;
-  assert(s->fd == fd);
+  struct evbuffer *inbev = bufferevent_get_input(bev);
+  struct evbuffer *outbev = bufferevent_get_output(bev);
 
-  ret = evbuffer_read(s->b, fd, REMOTE_STRING_MAXLEN);
-  if (ret <= 0) {
-    goto drop;
-  }
-
-  do {
-    char *saveptr;
-    line = evbuffer_readln(s->b, NULL, EVBUFFER_EOL_CRLF);
-    if (line != NULL) {
-      /* Extract initial token */
-      char *cmd = strtok_r(line, "\t ", &saveptr);
-      if (!cmd) { continue; }
-      if (!strcasecmp(cmd, "AUTH")) {
-        char *email = strtok_r(NULL, "\t ", &saveptr);
-        char *passwd = strtok_r(NULL, "\t ", &saveptr);
-        if (email != NULL && passwd != NULL) { 
-          int res = db_gate_password(email, passwd, retzero);
-          if (res >= 0) {
-            writer_write_evbuffer(s->base, &s->e, fd, remote_msg_success);
-          } else {
-            writer_write_evbuffer(s->base, &s->e, fd, remote_msg_failure);
-          }
-          goto busy;
+  line = evbuffer_readln(inbev, NULL, EVBUFFER_EOL_CRLF);
+  while (line != NULL) {
+    char *saveptr = NULL;
+    /* Extract initial token */
+    char *cmd = strtok_r(line, "\t ", &saveptr);
+    if (!cmd) goto next;
+    if (!strcasecmp(cmd, "AUTH")) {
+      char *email = strtok_r(NULL, "\t ", &saveptr);
+      char *passwd = strtok_r(NULL, "\t ", &saveptr);
+      if (email != NULL && passwd != NULL) { 
+        int res = db_gate_password(email, passwd, retzero);
+        if (res >= 0) {
+          evbuffer_add_printf(outbev, "Success\n");
+        } else {
+          evbuffer_add_printf(outbev, "Failure\n");
         }
-      } else if (!strcasecmp(cmd, "OPEN")) {
-        char *email = strtok_r(NULL, "\t ", &saveptr);
-        char *passwd = strtok_r(NULL, "\t ", &saveptr);
-        if (email != NULL && passwd != NULL) { 
-          int res = db_gate_password(email, passwd, lock_open);
-          if (res >= 0) {
-            writer_write_evbuffer(s->base, &s->e, fd, remote_msg_success);
-          } else {
-            writer_write_evbuffer(s->base, &s->e, fd, remote_msg_failure);
-          }
-          goto busy;
+      }
+    } else if (!strcasecmp(cmd, "OPEN")) {
+      char *email = strtok_r(NULL, "\t ", &saveptr);
+      char *passwd = strtok_r(NULL, "\t ", &saveptr);
+      if (email != NULL && passwd != NULL) { 
+        int res = db_gate_password(email, passwd, lock_open);
+        if (res >= 0) {
+          evbuffer_add_printf(outbev, "Success\n");
+        } else {
+          evbuffer_add_printf(outbev, "Failure\n");
         }
+      }
 #ifdef DEBUG
-      } else if (!strcasecmp(cmd, "RFID")) {
-        char *token = strtok_r(NULL, "\t ", &saveptr);
-        if (token != NULL) { 
-          int res = db_gate_rfid(token, lock_open);
-          if (res >= 0) {
-            writer_write_evbuffer(s->base, &s->e, fd, remote_msg_success);
-          } else {
-            writer_write_evbuffer(s->base, &s->e, fd, remote_msg_failure);
-          }
-          goto busy;
+    } else if (!strcasecmp(cmd, "RFID")) {
+      char *token = strtok_r(NULL, "\t ", &saveptr);
+      if (token != NULL) { 
+        int res = db_gate_rfid(token, lock_open);
+        if (res >= 0) {
+          evbuffer_add_printf(outbev, "Success\n");
+        } else {
+          evbuffer_add_printf(outbev, "Failure\n");
         }
-      } else if (!strcasecmp(cmd, "LOG")) {
-        writer_write_evbuffer(s->base, &s->e, fd, log_eb);
-        goto busy;
+      }
+    } else if (!strcasecmp(cmd, "LOG")) {
+      evbuffer_add_printf(outbev, "XXX\n");
 #endif
       } else if (!strcasecmp(cmd, "QUIT")) {
 #ifdef DEBUG
-        event_base_loopbreak(s->base);
+      event_base_loopbreak(bufferevent_get_base(bev));
 #endif
-        goto drop;
-      }
-      saveptr = NULL;
-      free(line);
+      goto drop;
+    } else {
+      evbuffer_add_printf(outbev, "Unknown command: %s %s\n", cmd, saveptr);
     }
-  } while (line != NULL);
+next:
+    saveptr = NULL;
+    free(line);
+    line = evbuffer_readln(inbev, NULL, EVBUFFER_EOL_CRLF);
+  }
 
-  int len = evbuffer_get_length(s->b);
+  int len = evbuffer_get_length(inbev);
   if(len >= REMOTE_STRING_MAXLEN) {
+    /* The remote end is just too rude; be rude back */
     goto drop;
   }
-  event_add(&s->e, NULL);
-  return;
-
-busy:
-  free(line);
   return;
 
 drop:
-  log_printf("Dropping remote connection %d\n", fd);
+  log_printf("Dropping remote connection %d\n", bufferevent_getfd(bev));
   free(line);
-  close(fd);
-  remote_state_finish(s);
+  bufferevent_free(bev);
   return;
+}
+
+static void remote_event_cb(struct bufferevent *bev, short what, void *arg) {
+  // log_printf("Remote event: %d %d\n", bufferevent_getfd(bev), what);
+
+  // Hang up
+  bufferevent_free(bev);
 }
 
 static void remote_accept(evutil_socket_t fd, short what, void *arg) {
   int cfd = accept(fd, NULL, NULL);
   log_printf("Accepted remote connection %d\n", cfd);
 
-  struct remote_state *s = calloc(sizeof(struct remote_state),1);
-  if(!s)
+  struct bufferevent *be
+    = bufferevent_socket_new((struct event_base *)arg, cfd, BEV_OPT_CLOSE_ON_FREE);
+  if(!be)
     goto err;
-  s->base = (struct event_base *)arg;
-  s->fd = cfd;
-  s->b = evbuffer_new();
-  if(!s->b)
-    goto err_s;
 
-  event_assign(&s->e, s->base, cfd, EV_READ, remote_rx_cb, s);
-  event_add(&s->e, NULL);
+  bufferevent_setcb(be, remote_rx_cb, NULL, remote_event_cb, NULL);
 
+  struct timeval tv;  
+    timerclear(&tv);
+  tv.tv_sec = REMOTE_WRITER_TIMEOUT;
+  // XXX REMOTE_READER_TIMEOUT?
+  bufferevent_set_timeouts(be, NULL, &tv);
+
+  bufferevent_enable(be, EV_READ | EV_WRITE);
 
   return;
-
-err_s:
-  free(s);
 err:
   close(cfd);
   return;
 }
-
-static void remote_init(void) {
-  remote_msg_success = evbuffer_new();
-  evbuffer_add_printf(remote_msg_success, "Success\n");
-
-  remote_msg_failure = evbuffer_new();
-  evbuffer_add_printf(remote_msg_failure, "Failure\n");
-}
-
 
 //                                                                      }}}
 // Utils                                                                {{{
@@ -628,38 +507,63 @@ static void setnonblock(int fd)
 // Main                                                                 {{{
 
 int main(int argc, char **argv){
+  char *door_fn = NULL;
+  char *db_fn = NULL;
+  int remote_port = -1;
+
+  {
+    int opt;
+    while((opt = getopt(argc, argv, "D:F:o:p:")) != -1) {
+      switch (opt) {
+        case 'F': door_fn = optarg; break;
+        case 'D': db_fn = optarg; break;
+        case 'o': 
+          lock_time = atoi(optarg);
+          if(lock_time <= 0) { lock_time = 30; }
+          break;
+        case 'p': remote_port = atoi(optarg); break;
+      }
+    }
+  }
+  if (!door_fn || !db_fn) {
+    printf("Please specify -F and -D\n");
+    return -1;
+  }
+
   struct event_base *base = event_base_new();
 
   // Open the serial port for the door and lock
-  int fd = open(DOOR_FILENAME, O_RDONLY|O_NONBLOCK);
+  int fd = open(door_fn, O_RDONLY|O_NONBLOCK);
   assert(fd >= 0);
 
   // Subsystems up!
   log_init();
-  log_printf("Initializing...\n");
-  remote_init();
-  if(db_init()) { return -1; }
+  log_printf("Initializing (door open time is %d seconds)...\n", lock_time);
+  if(db_init(db_fn)) { return -1; }
   lock_init(base, fd);
   door_init(base, fd);
 
   // XXX oh how I hate all this.  Pasted from numerous examples on the
   // Internet.
-  int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
-  struct sockaddr_in listen_addr;
-  memset(&listen_addr, 0, sizeof(listen_addr));
-  listen_addr.sin_family = AF_INET;
-  listen_addr.sin_addr.s_addr = INADDR_ANY;
-  listen_addr.sin_port = htons(REMOTE_LISTEN_PORT);
-  int reuseaddr_on = 1;
-  setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &reuseaddr_on, 
-      sizeof(reuseaddr_on));
-  bind(listen_fd, (struct sockaddr *)&listen_addr, sizeof(listen_addr));
-  setnonblock(listen_fd);
-  listen(listen_fd, 1);
-
-  struct event ev_accept;
-  event_assign(&ev_accept, base, listen_fd, EV_READ|EV_PERSIST, remote_accept, base);
-  event_add(&ev_accept, NULL);
+  if(remote_port > 0) {
+    int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+    struct sockaddr_in listen_addr;
+    memset(&listen_addr, 0, sizeof(listen_addr));
+    listen_addr.sin_family = AF_INET;
+    listen_addr.sin_addr.s_addr = INADDR_ANY;
+    listen_addr.sin_port = htons(remote_port);
+    int reuseaddr_on = 1;
+    setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &reuseaddr_on, 
+        sizeof(reuseaddr_on));
+    bind(listen_fd, (struct sockaddr *)&listen_addr, sizeof(listen_addr));
+    setnonblock(listen_fd);
+    listen(listen_fd, 1);
+   
+    struct event ev_accept;
+    event_assign(&ev_accept, base, listen_fd, EV_READ|EV_PERSIST, remote_accept, base);
+    event_add(&ev_accept, NULL);
+    log_printf(" Opened remote listener on port (%d)...\n", remote_port);
+  }
 
   // Go!
   log_printf("System alive!\n");
