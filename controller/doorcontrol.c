@@ -554,7 +554,7 @@ static void setnonblock(int fd)
 }
 
 //                                                                      }}}
-// Main                                                                 {{{
+// Signal handling                                                      {{{
 
 struct event_base *base;
 
@@ -573,11 +573,17 @@ static void signals_init(void) {
   sigemptyset(&sa.sa_mask);
   sa.sa_sigaction = signals_catch;
   res = sigaction(SIGSEGV, &sa, NULL);
+  assert(res != -1);
   res = sigaction(SIGINT, &sa, NULL);
+  assert(res != -1);
   res = sigaction(SIGQUIT, &sa, NULL);
+  assert(res != -1);
   res = sigaction(SIGTERM, &sa, NULL);
   assert(res != -1);
 }
+
+//                                                                      }}}
+// Main                                                                 {{{
 
 int main(int argc, char **argv){
   char *door_fn = NULL;
