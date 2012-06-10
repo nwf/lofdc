@@ -468,5 +468,24 @@
 			
 		}
 		
+		#success {
+			float: top;
+			background:#55FF55;
+			font-size:20px;
+			text-align: left;
+			font-weight:bold;
+			border:5px solid #AAFFAA;
+			padding:5px;
+		}
+		
+		#fail {
+			float:top;
+			background:#FF5555;
+			font-size:20px;
+			text-align: left;
+			font-weight:bold;
+			border:5px solid #FFAAAA;
+			padding:5px;
+		}
 				
 		

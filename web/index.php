@@ -1,26 +1,29 @@
 <?php
 require_once("globalVars.php");
 if(isset($_POST['email']) && isset($_POST['pw'])){
-	
-	print $_POST["email"];
-	print "<br>";
-	print $_POST["pw"];
-	print "starting socket<br>";
-	$fp = fsockopen("lofdoorcontrol.local", 12321, $errno, $errstr, 30);
-	print "opened socket<br>";
-	$b=0;
-	if (!$fp) {
-	    echo "$errstr ($errno)<br />\n";
+	if(strlen($_POST['email'])<3 || strlen($_POST['pw'])<3){
+		print '<div id="fail">Get lost.. you User/Password combo was not accepted!</div>';
 	} else {
-	    $out = "auth admin@example.com admin\r\n";
-	    //$out = "ping\n";
-	    fwrite($fp, $out);
-	    print "sent<br>";
-	    print fgets($fp, 15);
-	    /*while (!feof($fp)) {
-		print fgets($fp, 4);
-	    }*/
-	    fclose($fp);
+		$fp = fsockopen("lofdoorcontrol.local", 12321, $errno, $errstr, 30);
+		//print "opened socket<br>";
+		$b=0;
+		if (!$fp) {
+		    echo "$errstr ($errno)<br />\n";
+		} else {
+		    $out = "open ".$_POST["email"]." ".$_POST["pw"]."\r\n";
+		    fwrite($fp, $out);
+	
+		    $res=fgets($fp, 16);
+		    //print "Status: ".$res;
+	
+		    fclose($fp);
+	
+		    if(strpos($res,'Success') !== false){
+			    print '<div id="success">Door has been successfully unlocked</div>';
+		    }else {
+			    print '<div id="fail">Get lost.. you User/Password combo was not accepted!</div>';
+		    }
+		}
 	}
 }
 
@@ -90,9 +93,10 @@ if(isset($_POST['email']) && isset($_POST['pw'])){
 
 <!-- ********* UNIVERSAL CONTENT ********* -->
 	<body onLoad="reloadImg('webcam');">
+		
 		<div id="centerDiv"> 	
 			<div id="logo">
-				<a href="some location"><img src="media/logo.png" border="0" alt="//media"></a>					
+			<a href="http://baltimorenode.org"><img src="media/logo.png" border="0" alt="//media"></a>					
 			</div>
 
 			<div id="webcambox">
