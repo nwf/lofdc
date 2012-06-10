@@ -478,11 +478,13 @@ static void remote_rx_cb(struct bufferevent *bev, void *arg) {
     } else if (!strcasecmp(cmd, "LOG")) {
       evbuffer_add_printf(outbev, "XXX\n");
 #endif
-      } else if (!strcasecmp(cmd, "QUIT")) {
+    } else if (!strcasecmp(cmd, "QUIT")) {
 #ifdef DEBUG
       event_base_loopbreak(bufferevent_get_base(bev));
 #endif
       goto drop;
+    } else if (!strcasecmp(cmd, "PING")) {
+      evbuffer_add_printf(outbev, "Pong! :)\n");
     } else {
       evbuffer_add_printf(outbev, "Unknown command: %s %s\n", cmd, saveptr);
     }
