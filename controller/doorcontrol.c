@@ -29,9 +29,12 @@
 #define DOOR_TERMIOS_CFLAGS B2400
 #define DOOR_PIN_LOCK   TIOCM_DTR
 #define DOOR_PIN_ONAIR  TIOCM_RTS
+#define DOOR_PIN_OPENED TIOCM_CTS
+
 //                                                                      }}}
 // Prelude                                                              {{{
 #include <assert.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <stdarg.h>
@@ -283,7 +286,8 @@ static struct timeval lock_timeout_tv;
 static void lock_timeout_cb(evutil_socket_t fd, short what, void *arg) {
   log_printf("Lock timeout\n");
   int flags = DOOR_PIN_LOCK;
-  ioctl(lock_fd, TIOCMBIC, &flags);
+  int res = ioctl(lock_fd, TIOCMBIC, &flags);
+  assert(res == 0);
 }
 
 static int lock_open(const unsigned char *n) {
@@ -301,6 +305,7 @@ static int lock_open(const unsigned char *n) {
 
 static int lock_time = 30;
 static void lock_init(struct event_base *base, int fd) {
+  int res;
   lock_fd = fd;
 
   /* Tell the OS to lower modem control signals on exit,
@@ -308,10 +313,12 @@ static void lock_init(struct event_base *base, int fd) {
    */
   struct termios tios;
   memset(&tios, 0, sizeof(tios));
-  tcgetattr(fd, &tios);
-  tios.c_cflag &= ~(CBAUD|CBAUDEX);
-  tios.c_cflag |= HUPCL | CRTSCTS | DOOR_TERMIOS_CFLAGS;
-  tcsetattr(fd, TCSADRAIN, &tios);
+  res = tcgetattr(fd, &tios);
+  assert(res == 0);
+  tios.c_cflag &= ~(CBAUD|CBAUDEX|CRTSCTS);
+  tios.c_cflag |= HUPCL | CLOCAL | DOOR_TERMIOS_CFLAGS;
+  res = tcsetattr(fd, TCSADRAIN, &tios);
+  assert(res == 0);
 
   /* De-assert DTR to engage the lock */
   int flags = DOOR_PIN_LOCK;
@@ -323,15 +330,17 @@ static void lock_init(struct event_base *base, int fd) {
 }
 
 static void lock_deinit(int fd) {
-  /* Tell the OS to lower modem control signals on exit,
-   * which will re-engage the lock if we crash.
+  /* 
+   * Try to set sane tty flags, notably including B0
    */
+  tcflush(fd, TCIOFLUSH);
+
   struct termios tios;
   memset(&tios, 0, sizeof(tios));
   tcgetattr(fd, &tios);
-  tios.c_cflag &= ~(CBAUD|CBAUDEX);
-  tios.c_cflag |= HUPCL | B0;
-  tcsetattr(fd, TCSADRAIN, &tios);
+  tios.c_cflag &= ~(CBAUD|CBAUDEX|CRTSCTS);
+  tios.c_cflag |= HUPCL | CLOCAL | B0;
+  tcsetattr(fd, TCSAFLUSH, &tios);
 }
 
 //                                                                      }}}
@@ -339,12 +348,7 @@ static void lock_deinit(int fd) {
 
 static int door_fd;
 static struct event     door_ev;
-static struct event     door_ev2;
 static struct evbuffer *door_eb;
-
-static void door_tx_cb(evutil_socket_t fd, short what, void *arg) {
-  log_printf("DOOR TX?\n");
-}
 
 static int door_flags;
 #define DOOR_FLAG_RECOVERING 1
@@ -380,6 +384,24 @@ static void door_rx_cb(evutil_socket_t fd, short what, void *arg) {
   }
 }
 
+static struct event   door_probe_ev;
+static struct timeval door_probe_tv;
+
+static void door_probe_status(evutil_socket_t _fd, short what, void *arg) {
+  static int vlast = 0; 
+
+  int flags = 0;
+  int res = ioctl(door_fd, TIOCMGET, &flags);
+  assert(res == 0);
+
+  int vnow = !!(flags & DOOR_PIN_OPENED);
+  if(vnow != vlast) {
+    vlast = vnow;
+    log_printf("DOOR PROBE CHANGE %d\n", vnow);
+    // XXX Do something about it!
+  }
+}
+
 static void door_init(struct event_base *base, int fd) {
   door_fd = fd;
 
@@ -389,10 +411,15 @@ static void door_init(struct event_base *base, int fd) {
   // Pre-allocate enough space
   evbuffer_expand(door_eb, 3*DOOR_STRING_MAXLEN);
 
+  // Handle RFID input
   event_assign(&door_ev, base, door_fd, EV_READ|EV_PERSIST, door_rx_cb, NULL);
-  event_assign(&door_ev2, base, door_fd, EV_WRITE, door_tx_cb, NULL);
   event_add(&door_ev, NULL);
-  event_add(&door_ev2, NULL);
+
+  // Wake up and probe the magnetic sensor
+  timerclear(&door_probe_tv);
+  door_probe_tv.tv_usec = 500000; /* Half a second */
+  event_assign(&door_probe_ev, base, -1, EV_PERSIST, door_probe_status, NULL);
+  event_add(&door_probe_ev, &door_probe_tv);
 }
 
 //                                                                      }}}
