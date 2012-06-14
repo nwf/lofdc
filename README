@@ -33,4 +33,6 @@ misc/fswebcam.crontab    - crontab to prune image buffer
 
 luci                     - an incomplete, abandoned web UI
 
+web/*                    - PHP based attempt at web UI
+
 COPYING, Makefile, README - Standard stuff :)
