@@ -22,19 +22,15 @@
 #define LOG_TO_STDERR
 
 
-/* Anybody else who wants to use the store here to authenticate has to use
- * the same PBKDF parameters that we use for hashing.
- */
-#define DB_PWHASH_ITERS  1000
-#define DB_PWHASH_OUTLEN 20
-
 #define DEBUG
-#define DEBUG_CREATE_TEST_USERS
+#undef DEBUG_QUIT_ON_QUIT
 
 #define DOOR_TERMIOS_CFLAGS B2400
-#define DOOR_PIN_LOCK   TIOCM_DTR
-#define DOOR_PIN_ONAIR  TIOCM_RTS
-#define DOOR_PIN_OPENED TIOCM_CTS
+/* Some pins may be on the attached serial line */
+#undef DOOR_USE_SERIAL_PINS
+// #define DOOR_SER_PIN_LOCK   TIOCM_DTR
+// #define DOOR_SER_PIN_ONAIR  TIOCM_RTS
+// #define DOOR_SER_PIN_OPENED TIOCM_CTS
 
 //                                                                      }}}
 // Prelude                                                              {{{
@@ -43,6 +39,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <stdarg.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -62,7 +59,10 @@
 #include <event2/util.h>
 #include <openssl/evp.h>
 
+#include "controller/common.h"
+
 #define ASIZE(n) (sizeof(n)/sizeof(n[0]))
+
 //                                                                      }}}
 // Logging                                                              {{{
 
@@ -169,38 +169,8 @@ static int db_init(char *fn) {
   int ret;
   char *err;
   const char *tail;
-  static const char *db_init_sql =
-    "CREATE TABLE IF NOT EXISTS users ("
-      "user_id INTEGER PRIMARY KEY ASC,"
-      "email TEXT NOT NULL UNIQUE ON CONFLICT ABORT,"
-      "pwsalt BLOB NOT NULL,"
-      "pw BLOB NOT NULL,"
-      "admin BOOLEAN NOT NULL DEFAULT 0,"
-      "enabled BOOLEAN NOT NULL DEFAULT 1"
-    ");"
-    "CREATE TABLE IF NOT EXISTS rfid ("
-      "rfid_id INTEGER PRIMARY KEY ASC,"
-      "user_id INTEGER NOT NULL,"
-      "tsalt BLOB NOT NULL,"
-      "token TEXT NOT NULL UNIQUE ON CONFLICT ABORT,"
-      "FOREIGN KEY (user_id) REFERENCES users(user_id)"
-    ");"
-    "CREATE TABLE IF NOT EXISTS log ("
-      "log_id INTEGER PRIMARY KEY ASC,"
-      "user_id INTEGER,"
-      "time TEXT,"
-      "message TEXT,"
-      "FOREIGN KEY (user_id) REFERENCES users(user_id)"
-    ");"
-#if defined(DEBUG) && defined(DEBUG_CREATE_TEST_USERS)
-    "INSERT OR REPLACE INTO users (user_id, email, pwsalt, pw, admin) VALUES"
-      "(0, \"admin@example.com\", x'1234', pwhash(x'1234',\"admin\"), 1),"
-      "(1, \"user@example.com\", x'2345', pwhash(x'2345',\"user\"), 0);"
-    "INSERT OR REPLACE INTO rfid (user_id, tsalt, token) VALUES"
-      "(0, x'4567', pwhash(x'4567', \"34008159C3\")),"
-      "(1, x'5678', pwhash(x'5678', \"3400B6FE53\"));"
-#endif
-    ;
+  static const char *db_init_sql = DATABASE_SCHEMA_CREATE;
+
   ret = sqlite3_open(fn, &db);
   if (ret) {
     fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
@@ -222,7 +192,10 @@ static int db_init(char *fn) {
 #define DB_GATE_PARAM_EMAIL_IX 2
 #define DB_GATE_RESULT_IX 0
 static const char db_gate_password_sql[] =
-    "SELECT email FROM users WHERE email = ?2 AND pw = pwhash(users.pwsalt,?1);";
+    "SELECT email FROM users"
+    " WHERE email = ?2 "
+    "  AND pw = pwhash(users.pwsalt,?1)"
+    "  AND enabled = 1;";
   ret = sqlite3_prepare_v2(db, db_gate_password_sql, ASIZE(db_gate_password_sql),
                                &db_gate_password_stmt, &tail);
    if (ret != SQLITE_OK || *tail != '\0') {
@@ -231,7 +204,7 @@ static const char db_gate_password_sql[] =
   }
 
 static const char db_gate_rfid_sql[] =
-    "SELECT email FROM users JOIN rfid USING (user_id) WHERE token = pwhash(rfid.tsalt, ?1);";
+    "SELECT email FROM users JOIN rfid USING (user_id) WHERE token = ?1;";
   ret = sqlite3_prepare_v2(db, db_gate_rfid_sql, ASIZE(db_gate_rfid_sql),
                                &db_gate_rfid_stmt, &tail);
    if (ret != SQLITE_OK || *tail != '\0') {
@@ -246,12 +219,12 @@ err:
   return -1;
 }
 
-static int _db_gated_call(sqlite3_stmt *st, int (*c)(const unsigned char *)) {
+static int _db_gated_call(sqlite3_stmt *st, int (*c)(const unsigned char *, void *), void *arg) {
   int ret, res = -1;
 
   ret = sqlite3_step(st);
   if(ret == SQLITE_ROW) {
-    res = c(sqlite3_column_text(st, DB_GATE_RESULT_IX));
+    res = c(sqlite3_column_text(st, DB_GATE_RESULT_IX), arg);
     ret = sqlite3_step(st);
     /* Guaranteed by UNIQUE constraint */
     assert(ret != SQLITE_ROW);
@@ -264,7 +237,7 @@ static int _db_gated_call(sqlite3_stmt *st, int (*c)(const unsigned char *)) {
   return res;
 }
 
-static int db_gate_password(char *e, char *p, int (*c)(const unsigned char *)) {
+static int db_gate_password(char *e, char *p, int (*c)(const unsigned char *, void *), void *arg) {
   int ret;
   sqlite3_stmt *st = db_gate_password_stmt;
 
@@ -273,72 +246,56 @@ static int db_gate_password(char *e, char *p, int (*c)(const unsigned char *)) {
   ret = sqlite3_bind_text(st, DB_GATE_PARAM_SECRET_IX, p, -1, SQLITE_STATIC); 
   assert(ret == SQLITE_OK);
 
-  return _db_gated_call(st, c);
+  return _db_gated_call(st, c, arg);
 }
 
-static int db_gate_rfid(char *t, int (*c)(const unsigned char *)) {
+static int db_gate_rfid(char *t, int (*c)(const unsigned char *, void *), void *arg) {
   int ret;
   sqlite3_stmt *st = db_gate_rfid_stmt;
 
   ret = sqlite3_bind_text(st, DB_GATE_PARAM_SECRET_IX, t, -1, SQLITE_STATIC); 
   assert(ret == SQLITE_OK);
 
-  return _db_gated_call(st, c);
+  return _db_gated_call(st, c, arg);
 }
 
 
 //                                                                      }}}
-// Lock control                                                         {{{
-static int lock_fd;
-static struct event   lock_timeout_ev;
-static struct timeval lock_timeout_tv;
-static void lock_timeout_cb(evutil_socket_t fd, short what, void *arg) {
-  log_printf("Lock timeout\n");
-  int flags = DOOR_PIN_LOCK;
-  int res = ioctl(lock_fd, TIOCMBIC, &flags);
+// Serial Utilities                                                     {{{
+#ifdef DOOR_USE_SERIAL_PINS
+static int serial_pin_fd;
+
+static void serial_mbis(int flags) {
+  int res = ioctl(lock_ser_fd, TIOCMBIS, &flags);
+  assert(res -= 0);
+}
+
+static void serial_mbic(int flags) {
+  int res = ioctl(serial_pin_fd, TIOCMBIC, &flags);
   assert(res == 0);
 }
 
-static int lock_open(const unsigned char *n) {
-  int flags = DOOR_PIN_LOCK;
-  int res = ioctl(lock_fd, TIOCMBIS, &flags);
-  if (event_pending(&lock_timeout_ev, EV_TIMEOUT, NULL)) {
-    log_printf("Lock re-opened: '%s' (%d)\n", n, res);
-  } else {
-    log_printf("Lock open: '%s' (%d)\n", n, res);
-  }
-  event_add(&lock_timeout_ev, &lock_timeout_tv);
-
-  return 0;
-}
-
-static int lock_time = LOCK_DEFAULT_TIME;
-static void lock_init(struct event_base *base, int fd) {
+static void serial_pin_lock_init() {
   int res;
-  lock_fd = fd;
 
   /* Tell the OS to lower modem control signals on exit,
    * which will re-engage the lock if we crash.
    */
   struct termios tios;
   memset(&tios, 0, sizeof(tios));
-  res = tcgetattr(fd, &tios);
+  res = tcgetattr(serial_pin_fd, &tios);
   assert(res == 0);
-  tios.c_cflag &= ~(CBAUD|CBAUDEX|CRTSCTS);
-  tios.c_cflag |= HUPCL | CLOCAL | DOOR_TERMIOS_CFLAGS;
-  res = tcsetattr(fd, TCSADRAIN, &tios);
+  tios.c_cflag &= ~(CRTSCTS);
+  tios.c_cflag |= HUPCL | CLOCAL;
+  res = tcsetattr(serial_pin_fd, TCSADRAIN, &tios);
   assert(res == 0);
 
   /* De-assert DTR to engage the lock */
-  int flags = DOOR_PIN_LOCK;
-  ioctl(lock_fd, TIOCMBIC, &flags);
-
-  evtimer_assign(&lock_timeout_ev, base, lock_timeout_cb, NULL);
-  timerclear(&lock_timeout_tv);
-  lock_timeout_tv.tv_sec = lock_time;
+  serial_mbic(DOOR_SER_PIN_LOCK);
 }
+#endif
 
-static void lock_deinit(int fd) {
+static void serial_deinit(int fd) {
   /* 
    * Try to set sane tty flags, notably including B0
    */
@@ -350,46 +307,103 @@ static void lock_deinit(int fd) {
   tios.c_cflag &= ~(CBAUD|CBAUDEX|CRTSCTS);
   tios.c_cflag |= HUPCL | CLOCAL | B0;
   tcsetattr(fd, TCSAFLUSH, &tios);
+
+  close(fd);
 }
+//                                                                      }}}
+// GPIO utilities                                                       {{{
+
+static void gpio_write(FILE *f, int fl) {
+  if(f) {
+    int res = fprintf(f, fl ? "1\n" : "0\n");
+    assert(res == 2);
+    res = fflush(f);
+    assert(res == 0);
+  } 
+}
+
+//                                                                      }}}
+// Lock control                                                         {{{
+FILE* lock_gpio_file;
+static struct event   lock_timeout_ev;
+static struct timeval lock_timeout_tv;
+static void lock_timeout_cb(evutil_socket_t fd, short what, void *arg) {
+  log_printf("Lock timeout\n");
+#ifdef DOOR_SER_PIN_LOCK
+  serial_mbic(DOOR_SER_PIN_LOCK);
+#endif
+  gpio_write(lock_gpio_file, 1);
+}
+
+static int lock_open(const unsigned char *n, void *_ign) {
+#ifdef DOOR_SER_PIN_LOCK
+  serial_mbis(DOOR_SER_PIN_LOCK);
+#endif
+
+  gpio_write(lock_gpio_file, 0);
+
+  if (event_pending(&lock_timeout_ev, EV_TIMEOUT, NULL)) {
+    log_printf("Lock re-opened: '%s'\n", n);
+  } else {
+    log_printf("Lock open: '%s'\n", n);
+  }
+  event_add(&lock_timeout_ev, &lock_timeout_tv);
+
+  return 0;
+}
+
+static int lock_time = LOCK_DEFAULT_TIME;
+static void lock_init(struct event_base *base) {
+#ifdef DOOR_SER_PIN_LOCK
+    serial_pins_lock_init();
+#endif
+
+  evtimer_assign(&lock_timeout_ev, base, lock_timeout_cb, NULL);
+  timerclear(&lock_timeout_tv);
+  lock_timeout_tv.tv_sec = lock_time;
+}
+
 
 //                                                                      }}}
 // RFID Control                                                         {{{
 
-static int door_fd;
-static struct event     door_ev;
-static struct evbuffer *door_eb;
+static int rfid_fd;
+static struct event     rfid_ev;
+static struct evbuffer *rfid_eb;
 
-static int door_flags;
-#define DOOR_FLAG_RECOVERING 1
+static int rfid_flags;
+#define RFID_FLAG_RECOVERING 1
 
-static void door_rx_cb(evutil_socket_t fd, short what, void *arg) {
+static void rfid_rx_cb(evutil_socket_t fd, short what, void *arg) {
   int ret = 0;
   char *line = NULL;
 
-  ret = evbuffer_read(door_eb, fd, 2*DOOR_STRING_MAXLEN);
+  ret = evbuffer_read(rfid_eb, fd, 2*DOOR_STRING_MAXLEN);
   assert(ret > 0);
 
   do {
-    line = evbuffer_readln(door_eb, NULL, EVBUFFER_EOL_ANY);
-    // printf("doorR %d %s\n", door_flags, line);
+    line = evbuffer_readln(rfid_eb, NULL, EVBUFFER_EOL_ANY);
+    // printf("doorR %d %s\n", rfid_flags, line);
  
     if(line) { 
-      if(door_flags & DOOR_FLAG_RECOVERING) {
+      if(rfid_flags & RFID_FLAG_RECOVERING) {
         // printf("doorE recovered (discarding %s)\n", line);
       } else {
         // printf("doorF %s (%zd)\n", line, strlen(line));
-        db_gate_rfid(line, lock_open);
+        if(db_gate_rfid(line, lock_open, NULL)) {
+          log_printf("Unknown RFID tag: %s\n", line);
+        }
       }
-      door_flags &= ~DOOR_FLAG_RECOVERING;
+      rfid_flags &= ~RFID_FLAG_RECOVERING;
       free(line);
     }
   } while (line != NULL);
 
-  int len = evbuffer_get_length(door_eb);
+  int len = evbuffer_get_length(rfid_eb);
   if(len >= DOOR_STRING_MAXLEN) {
     // printf("Drop %d\n", len);
-    door_flags |= DOOR_FLAG_RECOVERING;
-    evbuffer_drain(door_eb, len);
+    rfid_flags |= RFID_FLAG_RECOVERING;
+    evbuffer_drain(rfid_eb, len);
   }
 }
 
@@ -399,11 +413,15 @@ static struct timeval door_probe_tv;
 static void door_probe_status(evutil_socket_t _fd, short what, void *arg) {
   static int vlast = 0; 
 
-  int flags = 0;
-  int res = ioctl(door_fd, TIOCMGET, &flags);
-  assert(res == 0);
-
-  int vnow = !!(flags & DOOR_PIN_OPENED);
+  int vnow = 0;
+#ifdef DOOR_SER_PIN_OPENED
+  {
+    int flags = 0;
+    int res = ioctl(rfid_fd, TIOCMGET, &flags);
+    assert(res == 0);
+  }
+  vnow = !!(flags & DOOR_SER_PIN_OPENED);
+#endif
   if(vnow != vlast) {
     vlast = vnow;
     log_printf("DOOR PROBE CHANGE %d\n", vnow);
@@ -411,18 +429,30 @@ static void door_probe_status(evutil_socket_t _fd, short what, void *arg) {
   }
 }
 
-static void door_init(struct event_base *base, int fd) {
-  door_fd = fd;
+static void rfid_init(struct event_base *base, int fd) {
+  rfid_fd = fd;
 
-  door_eb = evbuffer_new();
-  assert(door_eb);
+  {
+  // Set baud rate
+  struct termios tios;
+  memset(&tios, 0, sizeof(tios));
+  int res = tcgetattr(fd, &tios);
+  assert(res == 0);
+  tios.c_cflag &= ~(CBAUD|CBAUDEX);
+  tios.c_cflag |= CLOCAL | DOOR_TERMIOS_CFLAGS;
+  res = tcsetattr(fd, TCSADRAIN, &tios);
+  assert(res == 0);
+  }
+
+  rfid_eb = evbuffer_new();
+  assert(rfid_eb);
 
   // Pre-allocate enough space
-  evbuffer_expand(door_eb, 3*DOOR_STRING_MAXLEN);
+  evbuffer_expand(rfid_eb, 3*DOOR_STRING_MAXLEN);
 
   // Handle RFID input
-  event_assign(&door_ev, base, door_fd, EV_READ|EV_PERSIST, door_rx_cb, NULL);
-  event_add(&door_ev, NULL);
+  event_assign(&rfid_ev, base, rfid_fd, EV_READ|EV_PERSIST, rfid_rx_cb, NULL);
+  event_add(&rfid_ev, NULL);
 
   // Wake up and probe the magnetic sensor
   timerclear(&door_probe_tv);
@@ -432,10 +462,32 @@ static void door_init(struct event_base *base, int fd) {
 }
 
 //                                                                      }}}
+// On-Air Sign (XXX)                                                    {{{
+FILE* ota_gpio_file;
+int8_t ota_status = -1;
+
+static int ota_set(int8_t status) {
+  if(status) {
+#ifdef DOOR_SER_PIN_ONAIR
+    serial_mbis(DOOR_SER_PIN_ONAIR);
+#endif
+  } else {
+#ifdef DOOR_SER_PIN_ONAIR
+    serial_mbic(DOOR_SER_PIN_ONAIR);
+#endif
+  }
+  
+  gpio_write(ota_gpio_file, !status);
+  ota_status = status;
+
+  return 0;
+}
+
+//                                                                      }}}
 // Remote Control                                                       {{{
 
 
-static int retzero(const unsigned char *_x) {
+static int retzero(const unsigned char *_x, void *_ign) {
   return 0;
 }
 
@@ -455,7 +507,7 @@ static void remote_rx_cb(struct bufferevent *bev, void *arg) {
       char *email = strtok_r(NULL, "\t ", &saveptr);
       char *passwd = strtok_r(NULL, "\t ", &saveptr);
       if (email != NULL && passwd != NULL) { 
-        int res = db_gate_password(email, passwd, retzero);
+        int res = db_gate_password(email, passwd, retzero, NULL);
         if (res >= 0) {
           evbuffer_add_printf(outbev, "Success\n");
         } else {
@@ -466,18 +518,22 @@ static void remote_rx_cb(struct bufferevent *bev, void *arg) {
       char *email = strtok_r(NULL, "\t ", &saveptr);
       char *passwd = strtok_r(NULL, "\t ", &saveptr);
       if (email != NULL && passwd != NULL) { 
-        int res = db_gate_password(email, passwd, lock_open);
+        int res = db_gate_password(email, passwd, lock_open, NULL);
         if (res >= 0) {
           evbuffer_add_printf(outbev, "Success\n");
         } else {
           evbuffer_add_printf(outbev, "Failure\n");
         }
       }
+    } else if (!strcasecmp(cmd, "ONAIR")) {
+        ota_set(1);
+    } else if (!strcasecmp(cmd, "OFFAIR")) {
+        ota_set(0);
 #ifdef DEBUG
     } else if (!strcasecmp(cmd, "RFID")) {
       char *token = strtok_r(NULL, "\t ", &saveptr);
       if (token != NULL) { 
-        int res = db_gate_rfid(token, lock_open);
+        int res = db_gate_rfid(token, lock_open, NULL);
         if (res >= 0) {
           evbuffer_add_printf(outbev, "Success\n");
         } else {
@@ -488,7 +544,7 @@ static void remote_rx_cb(struct bufferevent *bev, void *arg) {
       evbuffer_add_printf(outbev, "XXX\n");
 #endif
     } else if (!strcasecmp(cmd, "QUIT")) {
-#ifdef DEBUG
+#if defined(DEBUG) && defined(DEBUG_QUIT_ON_QUIT)
       event_base_loopbreak(bufferevent_get_base(bev));
 #endif
       goto drop;
@@ -566,21 +622,36 @@ static void setnonblock(int fd)
 // Signal handling                                                      {{{
 
 struct event_base *base;
+static void signals_init(int);
 
 static void signals_catch(int s, siginfo_t *si, void *uc) {
   static char msg[] = "Caught signal; requesting event loop exit\n";
 
-  write(2,msg,ASIZE(msg));
+  // Reset signal handling so the next one is fatal
+  signals_init(0);
+
+  int res = write(2,msg,ASIZE(msg));
+  if (res != ASIZE(msg)) {
+    // XXX
+    // We should do something about that, but what?  If this isn't here,
+    // some versions of GCC complain about ignoring write's result.
+  }
+  
   event_base_loopbreak(base);
 }
 
-static void signals_init(void) {
+static void signals_init(int catch) {
   int res;
   struct sigaction sa;
-  
-  sa.sa_flags = SA_SIGINFO;
+ 
   sigemptyset(&sa.sa_mask);
-  sa.sa_sigaction = signals_catch;
+  if (catch) {
+    sa.sa_flags = SA_SIGINFO;
+    sa.sa_sigaction = signals_catch;
+  } else {
+    sa.sa_flags = 0;
+    sa.sa_handler = SIG_DFL;
+  }
   res = sigaction(SIGSEGV, &sa, NULL);
   assert(res != -1);
   res = sigaction(SIGINT, &sa, NULL);
@@ -591,25 +662,30 @@ static void signals_init(void) {
   assert(res != -1);
 }
 
+
 //                                                                      }}}
 // Main                                                                 {{{
-
 int main(int argc, char **argv){
   char *door_fn = NULL;
   char *db_fn = NULL;
+  char *lock_gpio_fn = NULL;
+  char *ota_gpio_fn = NULL;
   int remote_port = -1;
 
   {
     int opt;
-    while((opt = getopt(argc, argv, "D:F:o:p:")) != -1) {
+    while((opt = getopt(argc, argv, "A:D:F:L:o:p:")) != -1) {
       switch (opt) {
+        case 'A': ota_gpio_fn = optarg; break;
         case 'F': door_fn = optarg; break;
         case 'D': db_fn = optarg; break;
+        case 'L': lock_gpio_fn = optarg; break;
         case 'o': 
           lock_time = atoi(optarg);
           if(lock_time <= 0) { lock_time = 30; }
           break;
         case 'p': remote_port = atoi(optarg); break;
+        default: printf("Bad argument %c\n", opt); exit(-1);
       }
     }
   }
@@ -619,18 +695,33 @@ int main(int argc, char **argv){
   }
 
   base = event_base_new();
-  signals_init();
+  signals_init(1);
 
   // Open the serial port for the door and lock
-  int fd = open(door_fn, O_RDONLY|O_NONBLOCK);
-  assert(fd >= 0);
+  int ser_fd = open(door_fn, O_RDONLY|O_NONBLOCK);
+  assert(ser_fd >= 0);
+#ifdef DOOR_USE_SERIAL_PINS
+  serial_pin_fd = ser_fd;
+#endif
 
   // Subsystems up!
   log_init();
+
+  if (lock_gpio_fn) {
+    log_printf("Using lock GPIO file: %s\n", lock_gpio_fn);
+    lock_gpio_file = fopen(lock_gpio_fn, "w");
+    assert(lock_gpio_file != NULL);
+  }
+  if (ota_gpio_fn) {
+    log_printf("Using On-The-Air GPIO file: %s\n", ota_gpio_fn);
+    ota_gpio_file = fopen(ota_gpio_fn, "w");
+    assert(ota_gpio_file != NULL);
+  }
+
   log_printf("Initializing (door open time is %d seconds)...\n", lock_time);
   if(db_init(db_fn)) { return -1; }
-  lock_init(base, fd);
-  door_init(base, fd);
+  lock_init(base);
+  rfid_init(base, ser_fd);
 
   // XXX oh how I hate all this.  Pasted from numerous examples on the
   // Internet.
@@ -659,15 +750,20 @@ int main(int argc, char **argv){
 
   event_base_dispatch(base);
 
+  alarm(5);     /* Give ourselves five seconds to clean up */
+  log_printf("Dying...\n");
+
   // Things just got exciting: we ran out of events to listen to, or were
   // forced out of the event loop.  Time to die so that our supervisor can
   // respawn us.  On the way out, try to clean up a little to ease debugging
   // in things like valgrind.
 
-  lock_deinit(fd); 
+  serial_deinit(ser_fd); 
+  if(lock_gpio_file) { fclose(lock_gpio_file); }
+  if(ota_gpio_file) { fclose(ota_gpio_file); }
 
-  close(fd);
-  evbuffer_free(door_eb);
+  evbuffer_free(rfid_eb);
+  evbuffer_free(log_eb);
   event_base_free(base);
   db_deinit();
   return 0;

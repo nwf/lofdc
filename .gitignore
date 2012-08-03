@@ -4,5 +4,7 @@
 # Compilation outputs
 /controller/doorcontrol
 /controller/doorcontrol.o
+/controller/doormgmt
+/controller/doormgmt.o
 /luci/dist
 /misc/gpiotest

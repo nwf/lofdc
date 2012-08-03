@@ -2,5 +2,27 @@
 
 exec 2>&1
 
+# Initialize the I2C device
+echo pcf8574a 0x38 > /sys/bus/i2c/devices/i2c-0/new_device
+
+# Export the lock pin
+echo 253 > /sys/class/gpio/export
+echo out > /sys/class/gpio/gpio253/direction
+echo 1 > /sys/class/gpio/gpio253/value
+
+# Enable the RFID
+echo 252 > /sys/class/gpio/export
+echo out > /sys/class/gpio/gpio252/direction
+echo 0 > /sys/class/gpio/gpio252/value
+
 stty -F /dev/ttyUSB0 0
-doorcontrol -D /etc/doorcontrol.db -F /dev/ttyUSB0 -p 12321
+
+# Work around the OpenWRT system's initial boot quirks
+if [ -d /tmp/root ]; then
+	DATABASE=/tmp/root/mnt/doorcontrol.db
+else
+	DATABASE=/mnt/doorcontrol.db
+fi
+
+exec doorcontrol -D ${DATABASE} -F /dev/ttyUSB0 \
+    -L /sys/class/gpio/gpio253/value -p 12321

@@ -1,8 +1,9 @@
 TARGETS= \
 	controller/doorcontrol \
-	misc/gpiotest
+    controller/doormgmt \
+	misc/gpiotest \
 
-CFLAGS=-g -O2 --std=gnu99 -Wall -Werror
+CFLAGS=-g -O2 --std=gnu99 -Wall -Werror -I.
 LDFLAGS=-lsqlite3 -levent_core -lcrypto
 
 all: $(TARGETS)
