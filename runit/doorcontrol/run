@@ -17,8 +17,7 @@ echo 0 > /sys/class/gpio/gpio252/value
 
 stty -F /dev/ttyUSB0 0
 
-# Work around the OpenWRT system's initial boot quirks
-if [ -d /tmp/root ]; then
+if [ -r /tmp/root/mnt/doorcontrol.db ]; then
 	DATABASE=/tmp/root/mnt/doorcontrol.db
 else
 	DATABASE=/mnt/doorcontrol.db

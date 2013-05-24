@@ -6,7 +6,7 @@ PKG_RELEASE:=1
 PKG_REV:=HEAD
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
-PKG_SOURCE_URL:=git://github.com/nwf/lofdc
+PKG_SOURCE_URL:=/home/nwf/ee/lofdc
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_SUBDIR:=$(PKG_NAME)-$(PKG_VERSION)
 PKG_SOURCE_VERSION:=$(PKG_REV)
@@ -20,7 +20,7 @@ define Package/doorcontrol
   CATEGORY:=Utilities
   TITLE:=doorcontrol
   URL:=
-  DEPENDS:=+sqlite3 +libevent2-core +libopenssl
+  DEPENDS:=+libsqlite3 +libevent2-core +libopenssl
 endef
 
 define Package/doorcontrol/description
@@ -31,6 +31,8 @@ define Package/doorcontrol/install
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/controller/doorcontrol \
                  $(1)/usr/bin/doorcontrol
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/controller/doormgmt \
+                 $(1)/usr/bin/doormgmt
 
 	$(INSTALL_DIR) $(1)/etc
 	$(INSTALL_DIR) $(1)/etc/service
