@@ -8,11 +8,7 @@
 #ifndef _LOFDC_MISC_COMMON_H_
 #define _LOFDC_MISC_COMMON_H_
 
-/* Anybody else who wants to use the store here to authenticate has to use
- * the same PBKDF parameters that we use for hashing.
- */
-#define DB_PWHASH_ITERS  1000
-#define DB_PWHASH_OUTLEN 20
+#include <sqlite3.h>
 
 #define DATABASE_SCHEMA_CREATE                          \
     "CREATE TABLE IF NOT EXISTS users ("                \
@@ -26,7 +22,8 @@
     "CREATE TABLE IF NOT EXISTS rfid ("                 \
       "rfid_id INTEGER PRIMARY KEY ASC,"                \
       "user_id INTEGER NOT NULL,"                       \
-      "token TEXT NOT NULL UNIQUE ON CONFLICT ABORT,"   \
+      "tsalt BLOB NOT NULL,"                            \
+      "token BLOB NOT NULL,"                            \
       "FOREIGN KEY (user_id) REFERENCES users(user_id)" \
     ");"                                                \
     "CREATE TABLE IF NOT EXISTS log ("                  \
@@ -37,5 +34,6 @@
       "FOREIGN KEY (user_id) REFERENCES users(user_id)" \
     ");"
 
+int db_init_pwhash(sqlite3 *db);
 
 #endif

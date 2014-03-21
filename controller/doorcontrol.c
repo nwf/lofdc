@@ -134,28 +134,6 @@ static void log_init() {
 
 sqlite3 *db;
 
-static void db_pwhash(sqlite3_context *context, int argc, sqlite3_value **argv){
-  int res;
-
-  assert( argc==2 );
-  assert( sqlite3_value_type(argv[0]) == SQLITE_BLOB );
-  assert( sqlite3_value_type(argv[1]) == SQLITE3_TEXT );
-
-  const int saltsize = sqlite3_value_bytes(argv[0]);
-  const unsigned char *salt = sqlite3_value_blob(argv[0]);
-
-  const int pwsize = sqlite3_value_bytes(argv[1]);
-  const unsigned char *pw = sqlite3_value_blob(argv[1]);
-
-  unsigned char *out = calloc(sizeof (unsigned char), DB_PWHASH_OUTLEN);
-
-  res = PKCS5_PBKDF2_HMAC_SHA1((const char *)pw, pwsize, salt, saltsize,
-                               DB_PWHASH_ITERS, DB_PWHASH_OUTLEN, out);
-  assert(res != 0);
-
-  sqlite3_result_blob(context, out, DB_PWHASH_OUTLEN, free);
-}
-
 sqlite3_stmt *db_gate_rfid_stmt;
 sqlite3_stmt *db_gate_password_stmt;
 
@@ -177,8 +155,7 @@ static int db_init(char *fn) {
     goto err;
   }
 
-  ret = sqlite3_create_function_v2(db, "pwhash", 2, SQLITE_UTF8, NULL,
-                                   db_pwhash, NULL, NULL, NULL);
+  db_init_pwhash(db);
   assert(ret == 0);
 
   ret = sqlite3_exec(db, db_init_sql, NULL, NULL, &err);
@@ -204,7 +181,7 @@ static const char db_gate_password_sql[] =
   }
 
 static const char db_gate_rfid_sql[] =
-    "SELECT email FROM users JOIN rfid USING (user_id) WHERE token = ?1;";
+    "SELECT email FROM users JOIN rfid USING (user_id) WHERE token = pwhash(tsalt, ?1);";
   ret = sqlite3_prepare_v2(db, db_gate_rfid_sql, ASIZE(db_gate_rfid_sql),
                                &db_gate_rfid_stmt, &tail);
    if (ret != SQLITE_OK || *tail != '\0') {
