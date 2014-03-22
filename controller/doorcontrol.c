@@ -561,9 +561,9 @@ static void remote_rx_cb(struct bufferevent *bev, void *arg) {
         }
       }
     } else if (!strcasecmp(cmd, "LOG")) {
-      evbuffer_add_printf(outbev, "----- BEGIN LOG -----");
+      evbuffer_add_printf(outbev, "----- BEGIN LOG -----\n");
       evbuffer_add_buffer_reference(outbev, log_eb);
-      evbuffer_add_printf(outbev, "----- END LOG -----");
+      evbuffer_add_printf(outbev, "----- END LOG -----\n");
 #endif
     } else if (!strcasecmp(cmd, "QUIT")) {
 #if defined(DEBUG) && defined(DEBUG_QUIT_ON_QUIT)
