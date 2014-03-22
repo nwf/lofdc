@@ -32,6 +32,8 @@
 // #define DOOR_SER_PIN_ONAIR  TIOCM_RTS
 // #define DOOR_SER_PIN_OPENED TIOCM_CTS
 
+#define RFID_SEND_BREAK_DURATION 400
+
 //                                                                      }}}
 // Prelude                                                              {{{
 #include <assert.h>
@@ -239,20 +241,21 @@ static int db_gate_rfid(char *t, int (*c)(const unsigned char *, void *), void *
 
 //                                                                      }}}
 // Serial Utilities                                                     {{{
-#ifdef DOOR_USE_SERIAL_PINS
-static int serial_pin_fd;
 
-static void serial_mbis(int flags) {
-  int res = ioctl(lock_ser_fd, TIOCMBIS, &flags);
+// inline to silence gcc warning about potentially unused functions
+inline static void serial_mbis(int fd, int flags) {
+  int res = ioctl(fd, TIOCMBIS, &flags);
   assert(res -= 0);
 }
 
-static void serial_mbic(int flags) {
-  int res = ioctl(serial_pin_fd, TIOCMBIC, &flags);
+// inline to silence gcc warning about potentially unused functions
+inline static void serial_mbic(int fd, int flags) {
+  int res = ioctl(fd, TIOCMBIC, &flags);
   assert(res == 0);
 }
 
-static void serial_pin_lock_init() {
+#ifdef DOOR_USE_SERIAL_PINS
+static void serial_pin_lock_init(int serial_pin_fd) {
   int res;
 
   /* Tell the OS to lower modem control signals on exit,
@@ -330,9 +333,13 @@ static int lock_open(const unsigned char *n, void *_ign) {
 }
 
 static int lock_time = LOCK_DEFAULT_TIME;
-static void lock_init(struct event_base *base) {
+static void lock_init(struct event_base *base
 #ifdef DOOR_SER_PIN_LOCK
-    serial_pins_lock_init();
+    , int fd
+#endif
+) {
+#ifdef DOOR_SER_PIN_LOCK
+    serial_pins_lock_init(fd);
 #endif
 
   evtimer_assign(&lock_timeout_ev, base, lock_timeout_cb, NULL);
@@ -363,6 +370,11 @@ static void rfid_rx_cb(evutil_socket_t fd, short what, void *arg) {
     // printf("doorR %d %s\n", rfid_flags, line);
  
     if(line) { 
+
+#ifdef RFID_SEND_BREAK_DURATION
+      tcsendbreak(fd,RFID_SEND_BREAK_DURATION);
+#endif
+
       if(rfid_flags & RFID_FLAG_RECOVERING) {
         // printf("doorE recovered (discarding %s)\n", line);
       } else {
@@ -697,7 +709,11 @@ int main(int argc, char **argv){
 
   log_printf("Initializing (door open time is %d seconds)...\n", lock_time);
   if(db_init(db_fn)) { return -1; }
-  lock_init(base);
+  lock_init(base
+#ifdef DOOR_USE_SERIAL_PINS
+  , ser_fd
+#endif
+  );
   rfid_init(base, ser_fd);
 
   // XXX oh how I hate all this.  Pasted from numerous examples on the
