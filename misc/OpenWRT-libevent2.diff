@@ -1,0 +1,110 @@
+diff --git a/libs/libevent2/Makefile b/libs/libevent2/Makefile
+index 8e628b8..f4bd742 100644
+--- a/libs/libevent2/Makefile
++++ b/libs/libevent2/Makefile
+@@ -8,14 +8,15 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=libevent2
+-PKG_VERSION:=2.0.19
++PKG_VERSION:=2.1.4
++PKG_SFX:=alpha
+ PKG_RELEASE:=1
+ 
+-PKG_BUILD_DIR:=$(BUILD_DIR)/libevent-$(PKG_VERSION)-stable
+-PKG_SOURCE:=libevent-$(PKG_VERSION)-stable.tar.gz
++PKG_BUILD_DIR:=$(BUILD_DIR)/libevent-$(PKG_VERSION)-$(PKG_SFX)
++PKG_SOURCE:=libevent-$(PKG_VERSION)-$(PKG_SFX).tar.gz
+ PKG_SOURCE_URL:=http://www.monkey.org/~provos/ \
+ 	@SF/levent
+-PKG_MD5SUM:=91111579769f46055b0a438f5cc59572
++PKG_MD5SUM:=cdd2e27a29f27a0512ffdfb971c09580
+ 
+ PKG_FIXUP:=autoreconf
+ PKG_INSTALL:=1
+@@ -45,7 +46,7 @@ endef
+ 
+ define Package/libevent2
+   $(call Package/libevent2/Default)
+-  TITLE+= library (version 2.0)
++  TITLE+= library (version 2.1)
+ endef
+ 
+ define Package/libevent2/description
+@@ -57,7 +58,7 @@ endef
+ 
+ define Package/libevent2-core
+   $(call Package/libevent2/Default)
+-  TITLE+= core library (version 2.0)
++  TITLE+= core library (version 2.1)
+ endef
+ 
+ define Package/libevent2-core/description
+@@ -69,7 +70,7 @@ endef
+ 
+ define Package/libevent2-extra
+   $(call Package/libevent2/Default)
+-  TITLE+= extra library (version 2.0)
++  TITLE+= extra library (version 2.1)
+ endef
+ 
+ define Package/libevent2-extra/description
+@@ -81,7 +82,7 @@ endef
+ 
+ define Package/libevent2-openssl
+   $(call Package/libevent2/Default)
+-  TITLE+= OpenSSL library (version 2.0)
++  TITLE+= OpenSSL library (version 2.1)
+   DEPENDS+=+libopenssl
+ endef
+ 
+@@ -94,7 +95,7 @@ endef
+ 
+ define Package/libevent2-pthreads
+   $(call Package/libevent2/Default)
+-  TITLE+= Pthreads library (version 2.0)
++  TITLE+= Pthreads library (version 2.1)
+   DEPENDS+=+libpthread
+ endef
+ 
+@@ -119,34 +120,34 @@ define Build/InstallDev
+ 	$(CP) $(PKG_INSTALL_DIR)/usr/include/* $(1)/usr/include/
+ 	$(INSTALL_DIR) $(1)/usr/lib
+ 	$(CP) $(PKG_INSTALL_DIR)/usr/lib/libevent*.{la,a,so} $(1)/usr/lib/
+-	$(CP) $(PKG_INSTALL_DIR)/usr/lib/libevent*-2.0.so* $(1)/usr/lib/
++	$(CP) $(PKG_INSTALL_DIR)/usr/lib/libevent*-2.1.so* $(1)/usr/lib/
+ 	$(INSTALL_DIR) $(1)/usr/lib/pkgconfig
+ 	$(CP) $(PKG_INSTALL_DIR)/usr/lib/pkgconfig/libevent*.pc $(1)/usr/lib/pkgconfig/
+ endef
+ 
+ define Package/libevent2/install
+ 	$(INSTALL_DIR) $(1)/usr/lib
+-	$(CP) $(PKG_INSTALL_DIR)/usr/lib/libevent-2.0.so.* $(1)/usr/lib/
++	$(CP) $(PKG_INSTALL_DIR)/usr/lib/libevent-2.1.so.* $(1)/usr/lib/
+ endef
+ 
+ define Package/libevent2-core/install
+ 	$(INSTALL_DIR) $(1)/usr/lib
+-	$(CP) $(PKG_INSTALL_DIR)/usr/lib/libevent_core-2.0.so.* $(1)/usr/lib/
++	$(CP) $(PKG_INSTALL_DIR)/usr/lib/libevent_core-2.1.so.* $(1)/usr/lib/
+ endef
+ 
+ define Package/libevent2-extra/install
+ 	$(INSTALL_DIR) $(1)/usr/lib
+-	$(CP) $(PKG_INSTALL_DIR)/usr/lib/libevent_extra-2.0.so.* $(1)/usr/lib/
++	$(CP) $(PKG_INSTALL_DIR)/usr/lib/libevent_extra-2.1.so.* $(1)/usr/lib/
+ endef
+ 
+ define Package/libevent2-openssl/install
+ 	$(INSTALL_DIR) $(1)/usr/lib
+-	$(CP) $(PKG_INSTALL_DIR)/usr/lib/libevent_openssl-2.0.so.* $(1)/usr/lib/
++	$(CP) $(PKG_INSTALL_DIR)/usr/lib/libevent_openssl-2.1.so.* $(1)/usr/lib/
+ endef
+ 
+ define Package/libevent2-pthreads/install
+ 	$(INSTALL_DIR) $(1)/usr/lib
+-	$(CP) $(PKG_INSTALL_DIR)/usr/lib/libevent_pthreads-2.0.so.* $(1)/usr/lib/
++	$(CP) $(PKG_INSTALL_DIR)/usr/lib/libevent_pthreads-2.1.so.* $(1)/usr/lib/
+ endef
+ 
+ $(eval $(call BuildPackage,libevent2))
