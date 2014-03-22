@@ -1,9 +1,10 @@
-#!/bin/bash
+#!/bin/sh
 
-mkdir -p /tmp/webcam
+if [ -d /mnt/webcam ] ; then ln -s /mnt/webcam /tmp/webcam ; else mkdir -p /tmp/webcam; fi
+
 exec fswebcam \
   --quiet \
-  --loop 1 \
+  --loop 10 \
   --title 'Main Door' \
   --save /tmp/webcam/latest.png \
   --save /tmp/webcam/%F-%T.png
