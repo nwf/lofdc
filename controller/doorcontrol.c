@@ -475,6 +475,21 @@ static int ota_set(int8_t status) {
 //                                                                      }}}
 // Remote Control                                                       {{{
 
+struct remote_state {
+  char *auth_email; // non-NULL caches last result of AUTH command
+};
+
+static void remote_set_email(struct remote_state *rs, char *email) {
+  if(rs->auth_email) {
+    free(rs->auth_email);
+  }
+  rs->auth_email = email;
+}
+
+static void remote_state_free(struct remote_state *rs) {
+  remote_set_email(rs, NULL);
+  free(rs);
+}
 
 static int retzero(const unsigned char *_x, void *_ign) {
   return 0;
@@ -483,6 +498,7 @@ static int retzero(const unsigned char *_x, void *_ign) {
 static void remote_rx_cb(struct bufferevent *bev, void *arg) {
   char *line = NULL;
 
+  struct remote_state *rs = arg;
   struct evbuffer *inbev = bufferevent_get_input(bev);
   struct evbuffer *outbev = bufferevent_get_output(bev);
 
@@ -498,10 +514,24 @@ static void remote_rx_cb(struct bufferevent *bev, void *arg) {
       if (email != NULL && passwd != NULL) { 
         int res = db_gate_password(email, passwd, retzero, NULL);
         if (res >= 0) {
-          evbuffer_add_printf(outbev, "Success\n");
+          char *email_copy = strdup(email);
+          if (email_copy) {
+            evbuffer_add_printf(outbev, "Success\n");
+            remote_set_email(rs, email_copy);
+          } else {
+            evbuffer_add_printf(outbev, "Fail: ENOMEM\n");
+          }
         } else {
           evbuffer_add_printf(outbev, "Failure\n");
         }
+      }
+    } else if (!strcasecmp(cmd, "DEAUTH")) {
+      remote_set_email(rs, NULL);
+    } else if (!strcasecmp(cmd, "WHOAMI")) {
+      if(rs->auth_email) {
+        evbuffer_add_printf(outbev, "I believe you to be: %s\n", rs->auth_email);
+      } else {
+        evbuffer_add_printf(outbev, "You aren't.\n");
       }
     } else if (!strcasecmp(cmd, "OPEN")) {
       char *email = strtok_r(NULL, "\t ", &saveptr);
@@ -514,6 +544,7 @@ static void remote_rx_cb(struct bufferevent *bev, void *arg) {
           evbuffer_add_printf(outbev, "Failure\n");
         }
       }
+      // XXX: Add support for pre-authenticated open commands?
     } else if (!strcasecmp(cmd, "ONAIR")) {
         ota_set(1);
     } else if (!strcasecmp(cmd, "OFFAIR")) {
@@ -560,6 +591,7 @@ next:
 drop:
   log_printf("Dropping remote connection %d\n", bufferevent_getfd(bev));
   free(line);
+  remote_state_free(rs);
   bufferevent_free(bev);
   return;
 }
@@ -569,18 +601,23 @@ static void remote_event_cb(struct bufferevent *bev, short what, void *arg) {
 
   // Hang up
   bufferevent_free(bev);
+  remote_state_free(arg);
 }
 
 static void remote_accept(evutil_socket_t fd, short what, void *arg) {
   int cfd = accept(fd, NULL, NULL);
   log_printf("Accepted remote connection %d\n", cfd);
 
+  struct remote_state *rs = calloc(1,sizeof(struct remote_state));
+  if(!rs)
+   goto err_rs;
+
   struct bufferevent *be
     = bufferevent_socket_new((struct event_base *)arg, cfd, BEV_OPT_CLOSE_ON_FREE);
   if(!be)
-    goto err;
+    goto err_be;
 
-  bufferevent_setcb(be, remote_rx_cb, NULL, remote_event_cb, NULL);
+  bufferevent_setcb(be, remote_rx_cb, NULL, remote_event_cb, rs);
 
   struct timeval tv;  
     timerclear(&tv);
@@ -591,7 +628,9 @@ static void remote_accept(evutil_socket_t fd, short what, void *arg) {
   bufferevent_enable(be, EV_READ | EV_WRITE);
 
   return;
-err:
+err_be:
+  free(rs);
+err_rs:
   close(cfd);
   return;
 }
@@ -752,6 +791,10 @@ int main(int argc, char **argv){
   // forced out of the event loop.  Time to die so that our supervisor can
   // respawn us.  On the way out, try to clean up a little to ease debugging
   // in things like valgrind.
+  //
+  // XXX: We don't have the ability to free all the remote_state objects we
+  // allocate at the moment, so if we have listeners attached they show up
+  // as leaked objects.
 
   serial_deinit(ser_fd); 
   if(lock_gpio_file) { fclose(lock_gpio_file); }
