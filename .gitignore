@@ -3,8 +3,8 @@
 
 # Compilation outputs
 /controller/doorcontrol
-/controller/doorcontrol.o
 /controller/doormgmt
-/controller/doormgmt.o
+/controller/*.o
+/controller/*.so
 /luci/dist
 /misc/gpiotest

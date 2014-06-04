@@ -18,7 +18,7 @@
 
 #include <sqlite3.h>
 
-#include "controller/common.h"
+#include "controller/common-db.h"
 
 #define ASIZE(n) (sizeof(n)/sizeof(n[0]))
 
@@ -27,12 +27,7 @@
 
 sqlite3 *db;
 
-sqlite3_stmt *db_gate_rfid_stmt;
-sqlite3_stmt *db_gate_password_stmt;
-
 static void db_deinit() {
-  sqlite3_finalize(db_gate_password_stmt);
-  sqlite3_finalize(db_gate_rfid_stmt);
   sqlite3_close(db);
 }
 
@@ -80,7 +75,6 @@ static int db_cmd_user_arg(char **argv, int argc, int optind, char *sql) {
   return 0;
 }
 
-
 //                                                                      }}}
 // Main                                                                 {{{
 int main(int argc, char **argv){
@@ -113,10 +107,10 @@ int main(int argc, char **argv){
           "(0, \"admin@example.com\", x'1234', pwhash(x'1234',\"admin\"), 1);"
         "INSERT OR REPLACE INTO users (user_id, email, pwsalt, pw, admin) VALUES "
           "(1, \"user@example.com\", x'2345', pwhash(x'2345',\"user\"), 0);"
-        "INSERT OR REPLACE INTO rfid (user_id, tsalt, token) VALUES"
-          "(0, x'4567', pwhash(x'4567', \"34008159C3\"));"
-        "INSERT OR REPLACE INTO rfid (user_id, tsalt, token) VALUES"
-          "(1, x'5678', pwhash(x'5678', \"3400B6FE53\"));";
+        "INSERT OR REPLACE INTO rfid (user_id, rfid_type, token) VALUES"
+          "(0, 1, \"34008159C3\");"
+        "INSERT OR REPLACE INTO rfid (user_id, rfid_type, token) VALUES"
+          "(1, 1, \"3400B6FE53\");";
       int ret = sqlite3_exec(db, db_init_sql, NULL, NULL, NULL);
       assert(ret == SQLITE_OK);
     } else if(!strcasecmp("EXEC", argv[optind])) { 

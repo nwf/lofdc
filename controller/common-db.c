@@ -1,7 +1,7 @@
 #include <assert.h>
 #include <sqlite3.h>
 #include <openssl/evp.h>
-#include "controller/common.h"
+#include "controller/common-db.h"
 
 #define DB_PWHASH_ITERS  1000
 #define DB_PWHASH_OUTLEN 20
